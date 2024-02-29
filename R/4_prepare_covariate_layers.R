@@ -28,18 +28,13 @@ CEDA_clim_stack <- rast("covariates/raw/CEDA_clim_stack.tif") %>%
       mask(ROI)
 
 ## Latitude raster ----------------------------------------------------
-shape_extent <- ext(ROI)
-res <- 1
-lat_raster <- rast(nrows = ceiling((ymax(shape_extent) - ymin(shape_extent)) / res),
-                       ncols = ceiling((xmax(shape_extent) - xmin(shape_extent)) / res),
-                       xmin = xmin(shape_extent), xmax = xmax(shape_extent),
-                       ymin = ymin(shape_extent), ymax = ymax(shape_extent),
-                       crs = crs(km_proj))
-
-lat_raster[] <- rep(yFromRow(lat_raster, 1:nrow(lat_raster)), each = ncol(lat_raster))
+## Simple raster of latitude, helps with model fitting
+lat_raster <- rast(ext = ext(ROI), crs = crs(km_proj), res = 1)
+lat_raster[] <- rep(terra::yFromRow(lat_raster, 1:nrow(lat_raster)), each = ncol(lat_raster))
+writeRaster(lat_raster, 'test2.tif')
 lat_raster <- lat_raster %>% 
       mask(ROI) %>% 
-      terra::project(CEDA_clim_stack)
+      terra::resample(CEDA_clim_stack)
 names(lat_raster) <- 'lat_raster'
 
 ## Final climate stack ----------------------------------------------------

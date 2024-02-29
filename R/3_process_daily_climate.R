@@ -13,8 +13,8 @@ rain_files_all <- list.files(path = "covariates/raw/clim_daily", pattern = "rain
 temp_stack <- rast(temp_files)
 names(temp_stack) <- sprintf("%d%02d", rep(2010:2013, each=12), 1:12)
 start_year <- as.integer(min(regmatches(rain_files_all, regexpr("\\d{4}", rain_files_all))))
-rainfall_threshold <- 1
-n_quarters = 4
+rainfall_threshold <- 1 # Rain threshold in mm, used to calculate dry spell duration
+n_quarters = 4  # The number of individual coldest and hottest quarters to look for, 4 since we have data for 4 years
 
 # Identify the hottest and coldest quarters ----------------------------------------------------
 quarters <- ceiling(1:nlyr(temp_stack) / 3)

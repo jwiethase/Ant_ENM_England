@@ -81,8 +81,8 @@ rast_yeo_johnson <- function(rasterlayer, plot = FALSE){
       values(transformed_lyr) <- predict(yj_obj)
       if(plot){
             par(mfrow = c(2, 1))
-            plot(density(values(rasterlayer, na.rm = T)), main = "Original density distr.")
-            plot(density(values(transformed_lyr, na.rm = T)), main = "Transformed density distr.")
+            hist(values(rasterlayer, na.rm = T), main = "Original density distr.")
+            hist(values(transformed_lyr, na.rm = T), main = "Transformed density distr.")
             par(mfrow = c(1, 1))
       }
       return(transformed_lyr)

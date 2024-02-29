@@ -10,8 +10,8 @@ source('source/misc_functions.R')
 clim_topo_PC_stack <- rast("covariates/processed/clim_topo_PC_stack.tif")
 forest_PC_stack <- rast("covariates/processed/forest_PC_stack.tif")
 
-smoother = 'cr'
-n_knots = 3
+smoother = 'tp'
+n_knots = 4
 
 # Make splines ----------------------------------------------------
 ## Climate splines ---------------------------------------------------- 
@@ -45,7 +45,7 @@ forest_df_splines_sub <- forest_df_splines %>%
 forest_df_merged <- merge(forest_df, forest_df_splines_sub, by = c("x", "y"), all.x = T)
 
 forest_df_merged_sub <- forest_df_merged %>%
-      dplyr::select(contains(c("x", "y", "PC2_spline", "PC3_spline", "forest_mask_buff")))
+      dplyr::select(contains(c("x", "y", "PC2_spline", "PC3_spline", "PC4_spline", "forest_mask_buff")))
 
 forest_covariates <- rast(forest_df_merged, type = 'xyz', crs = crs(km_proj))
 
