@@ -19,8 +19,7 @@ clim_topo_PC_stack <- rast("data/clim_topo_PCA_30m.tif")
 
 smoother_list = c('tp', 'ps', 'cr')
 n_knots_list = c(3, 4)
-mult_combs <- crossing(smoother_list, n_knots_list) %>% filter(!(smoother_list == "ps" & n_knots_list == 3))
-
+mult_combs <- crossing(smoother_list, n_knots_list) %>% filter(!(smoother_list == 'ps' & n_knots_list == 3))
 comb_values <- mult_combs[job, ]
 print(comb_values)
 n_knots = comb_values$n_knots_list
@@ -60,13 +59,17 @@ for(i in 2:3){
 #write.csv(forest_df_splines, paste0("data/", sum(stringr::str_detect(colnames(forest_df), "PC")), "forestDFsplines_", smoother, "_", n_knots, "k.csv"))
 print("forest splines done")
 # Add splines to full data set. Should be okay to leave the non-forest values as NA
+forest_df_splines_sub <- forest_df_splines %>%
+                                dplyr::select(contains(c("x", "y", "spline")))
+
 forest_df_merged <- merge(forest_df,
-                          forest_df_splines %>%
-                                dplyr::select(contains(c("x", "y", "spline"))),
-                          by = c("x", "y"), all.x = T) %>%
+                          forest_df_splines_sub,
+                          by = c("x", "y"), all.x = T)
+print("forest merge done")
+forest_df_merged_sub <- forest_df_merged %>%
                                 dplyr::select(contains(c("x", "y", "PC2_spline", "PC3_spline", "forest_mask_buff")))
 
-forest_covariates <- rast(forest_df_merged, type = 'xyz', crs = crs(km_proj))
+forest_covariates <- rast(forest_df_merged_sub, type = 'xyz', crs = crs(km_proj))
 
 print("forest spline stack done")
 
