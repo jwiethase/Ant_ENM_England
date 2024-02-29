@@ -18,9 +18,9 @@ species_choice <- "Formica rufa"
 # Get parameters of best fitting model ---------------------------------------
 best_model_name <- list.files(paste0('figures/', species_choice, '/lgcp'))[1]
 
-max.edge = sub(".*E([0-9]+\\.[0-9]+)_.*", "\\1", best_model_name)
-range_multiplier = sub(".*mult([0-9]+\\.[0-9]+)_.*", "\\1", best_model_name)
-n_knots = sub(".*_([0-9]+)k_.*", "\\1", best_model_name)
+max.edge = as.numeric(sub(".*E([0-9]+\\.[0-9]+)_.*", "\\1", best_model_name))
+range_multiplier = as.numeric(sub(".*mult([0-9]+\\.[0-9]+)_.*", "\\1", best_model_name))
+n_knots = as.numeric(sub(".*_([0-9]+)k_.*", "\\1", best_model_name))
 smoother = sub(".*k_([a-z]{2}).*", "\\1", best_model_name)
 species_choice = paste("Formica", sub(".*_Formica_([^_]+)_.*", "\\1", best_model_name))
 prior_sigma = c(as.numeric(sub(".*_s([0-9]+\\.[0-9]+)_([0-9]+\\.[0-9]+)_.*", "\\1", best_model_name)),
