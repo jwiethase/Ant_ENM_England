@@ -54,37 +54,40 @@ ggsave(paste0("PCA_output/figures/climTopo_comb.pdf"), climTopo_comb, width = 15
 
 # Forest characteristics ----------------------------------------------------
 forest_cumulative_df <- read.csv("PCA_output/csv/forest_cumulative_df.csv")
-forest_scores_df <- fread("PCA_output/csv/forest_scores_df.csv") %>% select(-1)
-forest_loadings_df <- read.csv("PCA_output/csv/forest_loadings_df.csv") %>% dplyr::select(-X)
+forest_scores_df <- fread("PCA_output/csv/forest_scores_df.csv") 
+forest_loadings_df <- read.csv("PCA_output/csv/forest_loadings_df.csv")
 
-nforest_included <- sum(forest_cumulative_df$cum_var <= 0.98)
+forest_PC2_vs_PC3 <- ggplot(data = forest_scores_df, aes_string(x = "PC2", 
+                                           y = "PC3")) +
+      geom_hex(bins = 40) +  
+      theme_minimal() +
+      scale_fill_viridis(name = "Number of pixels", option = 'H', labels = custom_scientific) +
+      xlab(paste0("PC2", 
+                  " (", 
+                  round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == "PC2"]*100),
+                  "%)")) +
+      ylab(paste0("PC3", 
+                  " (", 
+                  round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == "PC3"]*100),
+                  "%)")) +
+      theme(plot.title = element_text(hjust = 0.5),
+            legend.position = "bottom")
 
-for (i in seq(1, nforest_included - 1, by = 2)) {
-      j <- i + 1
-      if (j <= nforest_included) {
-            p <- ggplot(data = forest_scores_df, aes_string(x = colnames(forest_scores_df)[i], 
-                                                               y = colnames(forest_scores_df)[j])) +
-                  geom_hex(bins = 40) +  
-                  theme_minimal() +
-                  scale_fill_viridis(name = "Number of pixels", option = 'H', labels = custom_scientific) +
-                  xlab(paste0(colnames(forest_scores_df)[i], 
-                              " (", 
-                              round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == colnames(forest_scores_df)[i]]*100),
-                              "%)")) +
-                  ylab(paste0(colnames(forest_scores_df)[j], 
-                              " (", 
-                              round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == colnames(forest_scores_df)[j]]*100),
-                              "%)")) +
-                  theme(plot.title = element_text(hjust = 0.5),
-                        legend.position = "bottom")
-            print(p)
-            plot_name <- paste("forest_PC", i, "_vs_PC", j, sep = "")
-            ggsave(paste0("PCA_output/figures/", plot_name, ".pdf"), p, width = 5, height = 5)
-            assign(plot_name, p, envir = .GlobalEnv)
-      }
-}
+ggsave(paste0("PCA_output/figures/forest_PC2_vs_PC3.pdf"), forest_PC2_vs_PC3, width = 5, height = 5)
 
-forest_PC_loadings <- forest_loadings_df %>% 
-      dplyr::select(1:(nforest_included+2))
-
+ggplot(data = forest_scores_df, aes_string(x = "PC1", 
+                                           y = "PC2")) +
+      geom_hex(bins = 40) +  
+      theme_minimal() +
+      scale_fill_viridis(name = "Number of pixels", option = 'H', labels = custom_scientific) +
+      xlab(paste0("PC1", 
+                  " (", 
+                  round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == "PC1"]*100),
+                  "%)")) +
+      ylab(paste0("PC2", 
+                  " (", 
+                  round(forest_cumulative_df$prop_var[forest_cumulative_df$PCA_comp == "PC2"]*100),
+                  "%)")) +
+      theme(plot.title = element_text(hjust = 0.5),
+            legend.position = "bottom")
                          
