@@ -31,9 +31,10 @@ ROI <- vect('spatial_other/ROI_outline_27700.shp') %>%
 
 sporadic <- read.csv('species_data/processed_csv/sporadic_combined.csv')
 
-clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_", smoother, "_", n_knots, "k.tif")) %>% 
-      terra::subset(!stringr::str_detect(names(.), "PC3"))
-forest_covariates <- rast(paste0("covariates/processed/4forest_", smoother, "_", n_knots, "k.tif")) %>% 
+clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif"))
+# %>% 
+#       terra::subset(!stringr::str_detect(names(.), "PC3"))
+forest_covariates <- rast(paste0("covariates/processed/4forest_300m_", smoother, "_", n_knots, "k.tif")) %>%
       terra::subset(!stringr::str_detect(names(.), "PC1|PC4"))
 effort_rast_10km <- rast('covariates/processed/effort_rast_10km.tif') 
 

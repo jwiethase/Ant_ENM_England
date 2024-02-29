@@ -14,7 +14,7 @@ source('source/misc_functions.R')
 predictions_resolution <- 2
 species_choice <- "Formica rufa"
 
-max.edge = 11
+max.edge = 15
 range_multiplier_sporadic = 0.2
 range_multiplier_exhaustive = 0.2
 prior_sigma = c(0.1, 0.01)
@@ -24,11 +24,13 @@ n_knots = 3
 
 covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC2_spline1", "clim_topo_PC2_spline2",
+                      "clim_topo_PC3_spline1", "clim_topo_PC3_spline2",
                       "clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
-                      # "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
-                      # "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
+                      "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
+                      "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
-                      # "forest_PC3_spline1", "forest_PC3_spline2",
+                      "forest_PC3_spline1", "forest_PC3_spline2",
+                      "forest_PC4_spline1", "forest_PC4_spline2",
                       "lat_raster",
                       "forest_mask_buff")
 
