@@ -32,7 +32,8 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "forest_PC3_spline1", "forest_PC3_spline2",
                       "forest_PC4_spline1", "forest_PC4_spline2",
                       "lat_raster",
-                      "forest_mask_buff")
+                      "forest_mask_buff",
+                      "days_sampled_sc")
 
 # Data files ------------------------------------------
 ROI <- vect('spatial_other/ROI_kmproj.shp')
