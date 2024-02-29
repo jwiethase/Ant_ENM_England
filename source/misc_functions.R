@@ -46,7 +46,8 @@ mean_fun <- function(x) mean(x, na.rm = TRUE)
 sd_fun <- function(x) sd(x, na.rm = TRUE)
 
 make_formula_terms <- function(rasterstack, name_leading, n_splines){
-      unique_vars <- grep(paste0("^", name_leading, "[0-9]$"), names(rasterstack), value = TRUE)
+      extracted_names <- gsub(paste0("^(", name_leading, "\\d).*$"), "\\1", names(rasterstack))
+      unique_vars <- unique(grep(paste0("^", name_leading, "[0-9].*"), extracted_names, value = TRUE))
       unique_vars_num <- as.numeric(gsub("\\D", "", unique_vars))
       spline_terms <- paste0(name_leading, 
                              rep(unique_vars_num, each = n_splines), "_spline", rep(1:n_splines, times = length(unique_vars)), 
