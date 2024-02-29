@@ -19,7 +19,8 @@ clim_topo_PC_stack <- rast("data/clim_topo_PCA_30m.tif")
 
 smoother_list = c('tp', 'ps', 'cr')
 n_knots_list = c(3, 4)
-mult_combs <- crossing(smoother_list, n_knots_list)
+mult_combs <- crossing(smoother_list, n_knots_list) %>% filter(!(smoother_list == "ps" & n_knots_list == 3))
+
 comb_values <- mult_combs[job, ]
 print(comb_values)
 n_knots = comb_values$n_knots_list
