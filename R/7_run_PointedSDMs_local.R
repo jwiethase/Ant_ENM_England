@@ -12,11 +12,11 @@ source('source/misc_functions.R')
 
 # Set parameters ---------------------------------------
 predictions_resolution <- 2
-species_choice <- "Formica rufa"
+species_choice <- "Formica lugubris"
 
-max.edge = 15
+max.edge = 11
 range_multiplier_sporadic = 0.2
-range_multiplier_exhaustive = 0.2
+range_divider_exhaustive = 1
 prior_sigma = c(0.1, 0.01)
 
 smoother = 'cr'
@@ -24,13 +24,13 @@ n_knots = 3
 
 covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC2_spline1", "clim_topo_PC2_spline2",
-                      "clim_topo_PC3_spline1", "clim_topo_PC3_spline2",
-                      "clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
-                      "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
-                      "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
+                      #"clim_topo_PC3_spline1", "clim_topo_PC3_spline2",
+                      #"clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
+                      # "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
+                      # "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
                       "forest_PC3_spline1", "forest_PC3_spline2",
-                      "forest_PC4_spline1", "forest_PC4_spline2",
+                      #"forest_PC4_spline1", "forest_PC4_spline2",
                       "lat_raster",
                       "forest_mask_buff",
                       "days_sampled_sc")
@@ -95,12 +95,11 @@ model_setup <- intModel(sporadic_sf, exhaustive_sf,
                         Coordinates = c('x', 'y'),
                         Boundary = boundary)
 
-spatial_extent_sporadic <- max(sporadic$y) - min(sporadic$y)
+spatial_extent_sporadic <- max(sporadic_sf$y) - min(sporadic_sf$y)
 range_sporadic <- as.numeric(round(spatial_extent_sporadic*range_multiplier_sporadic))
 prior_range_shared = c(range_sporadic, 0.1)
 
-spatial_extent_exhaustive <- max(exhaustive$x) - min(exhaustive$x)
-range_exhaustive <- as.numeric(round(spatial_extent_exhaustive*range_multiplier_exhaustive))
+range_exhaustive <- as.numeric(round(range_sporadic/range_divider_exhaustive, digits = 2))
 prior_range_separate = c(range_exhaustive, 0.1)
 
 model_setup$specifySpatial(sharedSpatial = TRUE, 
@@ -135,7 +134,7 @@ required_nx <- round((max(mesh$loc[,1]) - min(mesh$loc[,1])) / predictions_resol
 required_ny <- round((max(mesh$loc[,2]) - min(mesh$loc[,2])) / predictions_resolution)
 
 fixed_effects <- paste(model[["names.fixed"]], collapse = " + ")
-fixed_effects_effort <- gsub("days_sampl", "max(days_sampl)", fixed_effects)
+fixed_effects_effort <- gsub("days_sampl_sc", "max(days_sampl_sc)", fixed_effects)
 
 proj_grid <- fm_pixels(mesh, 
                      dims = c(required_nx, required_ny), 
@@ -167,7 +166,7 @@ exhaustive_random <- predict(object = model,
                          mask = boundary,
                          spatial = TRUE,
                          fun = 'linear',
-                         formula = ~ exhaustive_biasField)
+                         formula = ~ exhaustive_sf_biasField)
 
 all_preds_df <- as.data.frame(all_preds$predictions)
 suit_preds_df <- as.data.frame(suit_preds$predictions)

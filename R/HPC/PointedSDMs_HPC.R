@@ -12,23 +12,22 @@ source('source/misc_functions.R')
 
 # SET PARAMETERS ---------------------------------------
 predictions_resolution <- 2
-fine_res = 30
 
 species_choices <- c("Formica rufa", "Formica lugubris")
-max_edges <- c(7.5, 10, 11)
+max_edges <- c(5, 7, 10)
 range_multipliers_sporadic <- c(0.1, 0.5, 0.7)
-range_multipliers_exhaustive <- c(0.1, 0.5, 0.7)
-sigma_list <- c(0.1, 0.5, 1)
+range_dividers_exhaustive <- c(1, 2, 3)
+sigma_list <- c(0.1)
 smoother_list = c('tp', 'ps', 'cr')
 n_knots_list = c(3, 4)
 
-mult_combs <- crossing(max_edges, range_multipliers_sporadic, range_multipliers_exhaustive, smoother_list, n_knots_list, species_choices, sigma_list) # 432
+mult_combs <- crossing(max_edges, range_multipliers_sporadic, range_dividers_exhaustive, smoother_list, n_knots_list, species_choices, sigma_list) # 432
 comb_values <- mult_combs[job, ]
 print(comb_values)
 
 max.edge = comb_values$max_edges
 range_multiplier_sporadic = comb_values$range_multipliers_sporadic
-range_multiplier_exhaustive = comb_values$range_multipliers_exhaustive
+range_divider_exhaustive = comb_values$range_dividers_exhaustive
 n_knots = comb_values$n_knots_list
 smoother = comb_values$smoother_list
 species_choice = comb_values$species_choices
@@ -44,13 +43,15 @@ dir.create(paste0("figures/", gsub(" ", "_", species_choice), "/integrated"), sh
 km_proj = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=km +no_defs'
 covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC2_spline1", "clim_topo_PC2_spline2",
-                      "clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
-                      "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
-                      "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
+                      # "clim_topo_PC3_spline1", "clim_topo_PC3_spline2",
+                      # "clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
+                      # "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
+                      # "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
                       "forest_PC3_spline1", "forest_PC3_spline2",
                       "lat_raster",
-                      "forest_mask_buff")
+                      "forest_mask_buff",
+                      "days_sampled_sc")
 
 # Data import -----------------------------------
 ROI <- vect('data/ROI_kmproj.shp')
@@ -84,13 +85,16 @@ obs_spatial_exhaustive <- exhaustive %>%
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
       crop(subst(forest_covariates$forest_mask_buff, 0, NA))
 
+sporadic_sf <- st_as_sf(obs_spatial_sporadic)
+exhaustive_sf <-  st_as_sf(obs_spatial_exhaustive)
+
 small_regions <- st_as_sf(obs_spatial_exhaustive) %>%
       group_by(source) %>%
       summarize(geometry = st_convex_hull(st_combine(geometry))) %>%
       st_as_sf()
 
 # Mesh -----------------------------------
-all_data_spatial <- rbind(sporadic[, c('x', 'y')], exhaustive[, c('x', 'y')])
+all_data_spatial <- rbind(sporadic_sf[, c('x', 'y')], exhaustive_sf[, c('x', 'y')])
 boundary <- st_as_sf(ROI)
 
 mesh <- inla.mesh.2d(boundary = boundary, 
@@ -102,8 +106,6 @@ mesh <- inla.mesh.2d(boundary = boundary,
                    min.angle = 26)
 
 # Model setup -----------------------------------
-sporadic_sf <- st_as_sf(obs_spatial_sporadic)
-exhaustive_sf <-  st_as_sf(obs_spatial_exhaustive)
 model_setup <- intModel(sporadic_sf, exhaustive_sf, 
                         Mesh = mesh, 
                         Projection = CRS(km_proj),
@@ -112,12 +114,11 @@ model_setup <- intModel(sporadic_sf, exhaustive_sf,
                         Coordinates = c('x', 'y'),
                         Boundary = boundary)
 
-spatial_extent_sporadic <- max(sporadic$y) - min(sporadic$y)
+spatial_extent_sporadic <- max(sporadic_sf$y) - min(sporadic_sf$y)
 range_sporadic <- as.numeric(round(spatial_extent_sporadic*range_multiplier_sporadic))
 prior_range_shared = c(range_sporadic, 0.1)
 
-spatial_extent_exhaustive <- max(exhaustive$x) - min(exhaustive$x)
-range_exhaustive <- as.numeric(round(spatial_extent_exhaustive*range_multiplier_exhaustive))
+range_exhaustive <- as.numeric(round(range_sporadic/range_divider_exhaustive, digits = 2))
 prior_range_separate = c(range_exhaustive, 0.1)
 
 model_setup$specifySpatial(sharedSpatial = TRUE, 
@@ -129,8 +130,8 @@ model_setup$specifySpatial(Bias = 'exhaustive_sf',
                            prior.range = prior_range_separate,
                            prior.sigma = prior_sigma)
  
-model_setup$addSamplers(datasetName = 'sporadic_sf', Samplers = st_as_sf(ROI))
-model_setup$addSamplers(datasetName = 'exhaustive_sf', Samplers = small_regions)
+# model_setup$addSamplers(datasetName = 'sporadic_sf', Samplers = st_as_sf(ROI))
+# model_setup$addSamplers(datasetName = 'exhaustive_sf', Samplers = small_regions)
 
 # Run model -----------------------------------
 model <- fitISDM(model_setup, options = list(control.inla = list(strategy = "laplace",
@@ -155,7 +156,7 @@ required_nx <- round((max(mesh$loc[,1]) - min(mesh$loc[,1])) / predictions_resol
 required_ny <- round((max(mesh$loc[,2]) - min(mesh$loc[,2])) / predictions_resolution)
 
 fixed_effects <- paste(model[["names.fixed"]], collapse = " + ")
-fixed_effects_effort <- gsub("days_sampl", "max(days_sampl)", fixed_effects)
+fixed_effects_effort <- gsub("days_sampl_sc", "max(days_sampl_sc)", fixed_effects)
 
 proj_grid <- fm_pixels(mesh, 
                      dims = c(required_nx, required_ny), 
@@ -187,7 +188,7 @@ exhaustive_random <- predict(object = model,
                          mask = boundary,
                          spatial = TRUE,
                          fun = 'linear',
-                         formula = ~ exhaustive_biasField)
+                         formula = ~ exhaustive_sf_biasField)
 
 all_preds_df <- as.data.frame(all_preds$predictions)
 suit_preds_df <- as.data.frame(suit_preds$predictions)
@@ -327,7 +328,7 @@ fixed_plot <- ggplot() +
 #       xlab("Covariate value") +
 #       ylab("Intensity")
 
-diagnostic_plot <- ((median_plot | sd_plot) / (shared_plot | suitability_plot)) | (hyper_plot / fixed_plot)
+diagnostic_plot <- ((median_plot | suitability_plot) / (shared_plot | exhaustive_plot)) | (hyper_plot / fixed_plot)
 diagnostic_plot
 
 pdf(paste0("figures/", gsub(" ", "_", species_choice), "/integrated/", 
