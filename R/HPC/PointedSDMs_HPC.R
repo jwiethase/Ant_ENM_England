@@ -8,7 +8,12 @@ library(viridis)
 library(tidyterra)
 library(ggpmisc)
 library(patchwork)
+bru_options_set(control.compute = list(cpo = T)) 
+setwd('/users/jhw538/scratch/ant_modelling')
 source('source/misc_functions.R')
+
+args <- commandArgs(trailingOnly=TRUE)
+job <- as.integer(args[1])
 
 # SET PARAMETERS ---------------------------------------
 predictions_resolution <- 2
@@ -64,9 +69,9 @@ sporadic <- read.csv('data/sporadic_combined.csv')  %>%
 exhaustive <- read.csv('data/exhaustive_combined.csv') %>% 
       filter(species == species_choice)
 
-clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif")) 
+clim_topo_covariates <- rast(paste0("data/6clim_topo_300m_", smoother, "_", n_knots, "k.tif"))
 
-forest_covariates <- rast(paste0("data/4forest_", smoother, "_", n_knots, "k.tif")) %>% 
+forest_covariates <- rast(paste0("data/4forest_300m_", smoother, "_", n_knots, "k.tif")) %>% 
       resample(clim_topo_covariates)
 
 effort_rast_10km <- rast('data/effort_rast_10km.tif') %>% 
@@ -94,7 +99,8 @@ small_regions <- st_as_sf(obs_spatial_exhaustive) %>%
       st_as_sf()
 
 # Mesh -----------------------------------
-all_data_spatial <- rbind(sporadic_sf[, c('x', 'y')], exhaustive_sf[, c('x', 'y')])
+all_data_spatial <- rbind(data.frame(x = sporadic_sf$x, y = sporadic_sf$y), 
+                          data.frame(x = exhaustive_sf$x, y = exhaustive_sf$y))
 boundary <- st_as_sf(ROI)
 
 mesh <- inla.mesh.2d(boundary = boundary, 

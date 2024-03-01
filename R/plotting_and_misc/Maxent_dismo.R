@@ -39,9 +39,11 @@ forest_covariates <- rast(paste0("covariates/processed/4forest_300m_", smoother,
 covariates <- stack(stack(forest_covariates), stack(clim_topo_covariates))
 predictors <- raster::subset(covariates, subset = covars_selection)      
 
+effort_rast_10km <- raster('covariates/processed/effort_rast_10km.tif') %>% 
+      disaggregate(fact = res(.)/res(clim_topo_covariates)) %>% 
+      raster::resample(., raster(clim_topo_covariates), method = "bilinear")
 
 presences <- rbind(sporadic, exhaustive)
-res(predictors)  # Each cell is 333m wide
 thinned_presences <- gridSample(presences, predictors, n=1)
 
 # PARTITION ------------------------------------------
@@ -51,7 +53,8 @@ occtrain <- thinned_presences[fold != 1, ]
 
 # TRAINING ------------------------------------------
 ## FIT MAXENT MODEL & PREDICT ------------------------------------------
-me <- maxent(x = predictors, p = thinned_presences, nbg = 1e04)
+me <- maxent(x = predictors, p = thinned_presences, 
+             nbg = 1e04)
 
 suitability_raster <- predict(me, predictors, progress='text') %>% 
       rast()

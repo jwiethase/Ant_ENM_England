@@ -12,9 +12,9 @@ source('source/misc_functions.R')
 
 # Set parameters ---------------------------------------
 predictions_resolution <- 2
-species_choice <- "Formica lugubris"
+species_choice <- "Formica rufa"
 
-max.edge = 11
+max.edge = 10
 range_multiplier_sporadic = 0.2
 range_divider_exhaustive = 1
 prior_sigma = c(0.1, 0.01)
@@ -67,13 +67,17 @@ obs_spatial_exhaustive <- exhaustive %>%
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
       crop(subst(forest_covariates$forest_mask_buff, 0, NA))
 
+sporadic_sf <- st_as_sf(obs_spatial_sporadic)
+exhaustive_sf <-  st_as_sf(obs_spatial_exhaustive)
+
 small_regions <- st_as_sf(obs_spatial_exhaustive) %>%
       group_by(source) %>%
       summarize(geometry = st_convex_hull(st_combine(geometry))) %>%
       st_as_sf()
 
 # Mesh -----------------------------------
-all_data_spatial <- rbind(sporadic[, c('x', 'y')], exhaustive[, c('x', 'y')])
+all_data_spatial <- rbind(data.frame(x = sporadic_sf$x, y = sporadic_sf$y), 
+                          data.frame(x = exhaustive_sf$x, y = exhaustive_sf$y))
 boundary <- st_as_sf(ROI)
 
 mesh <- inla.mesh.2d(boundary = boundary, 
@@ -85,8 +89,6 @@ mesh <- inla.mesh.2d(boundary = boundary,
                    min.angle = 26)
 
 # Model setup -----------------------------------
-sporadic_sf <- st_as_sf(obs_spatial_sporadic)
-exhaustive_sf <-  st_as_sf(obs_spatial_exhaustive)
 model_setup <- intModel(sporadic_sf, exhaustive_sf, 
                         Mesh = mesh, 
                         Projection = CRS(km_proj),
