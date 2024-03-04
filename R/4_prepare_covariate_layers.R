@@ -122,9 +122,10 @@ names(topo_stack_30m) <- c('northness', 'eastness', 'hillshade', 'slope')
 topo_stack_300m <- topo_stack_30m %>% terra::aggregate(fact = 10, fun = 'median', threads = T)
 
 # Effort raster ----------------------------------------------------
-effort_rast_10km <- rast("covariates/raw/GEE_effort_rast_10km.tif") %>%  
-      clamp(lower = 0, values = T) %>% 
-      terra::project(crs(km_proj)) %>% 
+effort_vector <- vect("spatial_other/effort_10km.shp") 
+rast_OS_grid <- rast(ext = ext(effort_vector), crs = crs(effort_vector), res = 10, vals = 1)
+    
+effort_rast_10km <- rasterize(effort_vector, rast_OS_grid, field = "days_sampl") %>% 
       crop(ROI) %>% 
       mask(ROI) %>% 
       +1 %>% 
