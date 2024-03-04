@@ -7,6 +7,46 @@ determine_accuracy <- function(grid_ref) {
       return(accuracy_map[num_length])
 }
 
+read_and_select <- function(df, cols, type = "csv"){
+      require(tidyverse)
+      if(type == "csv"){
+            df <- read.csv(df) %>% 
+                  dplyr::select(cols)
+            return(df)
+      }
+      if(type == "xls"){
+            require(readxl)
+            df <- read_excel(df) %>% 
+                  dplyr::select(cols)
+            return(df)
+      }
+}
+
+thin_spatial <- function(points, dist_meters, seed = NULL){
+      if(!is.null(seed)){set.seed(seed)}
+      shuffle_order <- sample(NROW(points))
+      points_shuffled <- points[shuffle_order, ]
+      
+      keep_indices <- rep(TRUE, NROW(points_shuffled))
+      
+      for (i in 1:NROW(points_shuffled)) {
+            if (keep_indices[i]) {
+                  # Calculate distances from the current point to all others
+                  distances <- terra::distance(points_shuffled[i, ], points_shuffled)
+                  
+                  # Mark points within distance for removal, except the current one
+                  within_dist <- distances <= dist_meters
+                  keep_indices[within_dist] <- FALSE
+                  keep_indices[i] <- TRUE  # Ensure the current point is kept
+            }
+      }
+      points_thinned <- points_shuffled[keep_indices, ]
+      
+      cat(paste0("Spatial thinning removed ",  NROW(points) - NROW(points_thinned), " points"))
+      
+      return(points_shuffled[keep_indices, ])
+}
+
 rsq <- function (x, y) cor(x, y) ^ 2
 
 normalise_raster <- function(spatRaster){
