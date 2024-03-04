@@ -24,8 +24,16 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "forest_mask_buff")
 
 # DATA FILES ------------------------------------------
+## Covariates ------------------------------------------
 ROI <- vect('spatial_other/ROI_outline_27700.shp') %>% 
       terra::project(crs(km_proj))
+clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif")) 
+forest_covariates <- rast(paste0("covariates/processed/4forest_300m_", smoother, "_", n_knots, "k.tif")) %>% 
+      resample(clim_topo_covariates)
+covariates <- stack(stack(forest_covariates), stack(clim_topo_covariates))
+predictors <- raster::subset(covariates, subset = covars_selection)  
+
+## Observations ------------------------------------------
 sporadic <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
       filter(species == species_choice) %>% 
       dplyr::select(x, y)
@@ -33,18 +41,10 @@ exhaustive <- read.csv('species_data/processed_csv/exhaustive_combined.csv') %>%
       filter(species == species_choice) %>% 
       dplyr::select(x, y)
 
-clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif")) 
-forest_covariates <- rast(paste0("covariates/processed/4forest_300m_", smoother, "_", n_knots, "k.tif")) %>% 
-      resample(clim_topo_covariates)
-covariates <- stack(stack(forest_covariates), stack(clim_topo_covariates))
-predictors <- raster::subset(covariates, subset = covars_selection)      
-
-effort_rast_10km <- raster('covariates/processed/effort_rast_10km.tif') %>% 
-      disaggregate(fact = res(.)/res(clim_topo_covariates)) %>% 
-      raster::resample(., raster(clim_topo_covariates), method = "bilinear")
-
-presences <- rbind(sporadic, exhaustive)
-thinned_presences <- gridSample(presences, predictors, n=1)
+thinned_presences <- rbind(sporadic, exhaustive) %>% 
+      vect(geom = c('x', 'y'), crs = crs(km_proj)) %>% 
+      thin_spatial(., dist_meters = 300) %>% 
+      as.data.frame(geom = "XY")
 
 # PARTITION ------------------------------------------
 fold <- kfold(thinned_presences, k = 5)
@@ -65,13 +65,13 @@ bg <- randomPoints(predictors, 10000)
 
 e1 <- evaluate(me, p = occtest, a = bg, x = predictors)
 
-pvtest <- data.frame(extract(predictors, occtest))
-avtest <- data.frame(extract(predictors, bg))
+pvtest <- data.frame(raster::extract(predictors, occtest))
+avtest <- data.frame(raster::extract(predictors, bg))
 
 e2 <- evaluate(me, p = pvtest, a = avtest)
 
-testp <- predict(me, pvtest) 
-testa <- predict(me, avtest) 
+testp <- raster::predict(me, pvtest) 
+testa <- raster::predict(me, avtest) 
 
 e3 <- evaluate(p = testp, a = testa)
 e3

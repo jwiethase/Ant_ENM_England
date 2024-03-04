@@ -100,13 +100,9 @@ names(clim_topo_PC_stack) <- c(paste0("clim_topo_PC", 1:nclim_topo_included), "l
 ## Forest PCA ----------------------------------------------------
 ## Run the PCA only on non-zero values (there are many of those). These will be mostly be ignored
 ## later anyways due to the forest/non-forest dummy layers
-forest_stack_sub <- forest_stack %>%
-      tidyterra::select(cover_VOM_log, perc09_height_VOM_log, sd_height_VOM_log, distance_ancient) 
-
-forest_stack_PCA <- forest_stack_sub %>% 
-      tidyterra::select(cover_VOM_log, perc09_height_VOM_log, sd_height_VOM_log) %>% 
-      mask(subst(forest_stack$forest_mask_buff, 0, NA)) %>% 
-      c(forest_stack_sub$distance_ancient)
+forest_stack_PCA <- forest_stack %>%
+      tidyterra::select(cover_VOM_log, perc09_height_VOM_log, sd_height_VOM_log, distance_ancient) %>% 
+      mask(subst(forest_stack$forest_mask_buff, 0, NA)) 
 
 rpc_forest <- terra::prcomp(forest_stack_PCA, center = T, scale. = T)
 summary(rpc_forest)
