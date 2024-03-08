@@ -393,7 +393,11 @@ sporadic_combined <- rbind(bwars_formica_df, hymettus_df, josie_df, bwars_nitidu
       thin_spatial(., 20) %>% # Thin closely clustered points
       as.data.frame(geom = 'XY') 
       
-all_eff_lgcp <- sporadic_combined %>% dplyr::select(OS_Tile, date) %>% 
+all_eff_lgcp <- rbind(sporadic_combined %>% 
+                            filter(source == "Nitidulus") %>% 
+                            dplyr::select(OS_Tile, date),
+                      bwars_all_eff %>% 
+                            dplyr::select(OS_Tile, date)) %>% 
       group_by(OS_Tile) %>% 
       summarise(days_sampled = length(unique(date)))
 
