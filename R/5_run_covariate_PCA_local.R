@@ -20,9 +20,9 @@ climate_stack_1km$median_total_rain_coldest_log <- log(climate_stack_1km$median_
 climate_stack_1km$median_total_rain_hottest_log <- log(climate_stack_1km$median_total_rain_hottest)
 
 # VOM layers are heavily skewed; run transformation
-forest_stack$cover_VOM_log <- log(forest_stack$cover_VOM+1)
-forest_stack$perc09_height_VOM_log <- log(forest_stack$perc09_height_VOM+1)
-forest_stack$sd_height_VOM_log <- log(forest_stack$sd_height_VOM+1)
+forest_stack$cover_VOM_sqrt <- sqrt(forest_stack$cover_VOM)
+forest_stack$perc09_height_VOM_sqrt <- sqrt(forest_stack$perc09_height_VOM)
+forest_stack$sd_height_VOM_sqrt <- sqrt(forest_stack$sd_height_VOM)
 
 # Slope makes more sense on log scale
 topo_stack$slope_log <- log(topo_stack$slope+1)
@@ -35,7 +35,7 @@ dev.off()
 
 pdf("PCA_output/figures/forest_densities.pdf", width = 12, height = 7)
 par(mfrow = c(3, 3))
-lapply(names(forest_stack), function(x){hist(values(forest_stack[[x]], na.rm = T), main = x)})
+lapply(names(forest_stack), function(x){hist(values(forest_stack[[x]] , na.rm = T), main = x)})
 dev.off()
 
 pdf("PCA_output/figures/topo_densities.pdf", width = 12, height = 7)
@@ -101,7 +101,7 @@ names(clim_topo_PC_stack) <- c(paste0("clim_topo_PC", 1:nclim_topo_included), "l
 ## Run the PCA only on non-zero values (there are many of those). These will be mostly be ignored
 ## later anyways due to the forest/non-forest dummy layers
 forest_stack_PCA <- forest_stack %>%
-      tidyterra::select(cover_VOM_log, perc09_height_VOM_log, sd_height_VOM_log, distance_ancient) %>% 
+      tidyterra::select(cover_VOM_sqrt, perc09_height_VOM_sqrt, sd_height_VOM_sqrt, distance_ancient) %>% 
       mask(subst(forest_stack$forest_mask_buff, 0, NA)) 
 
 rpc_forest <- terra::prcomp(forest_stack_PCA, center = T, scale. = T)
@@ -128,7 +128,7 @@ forest_loadings_df <- data.frame(rpc_forest$rotation) %>%
       dplyr::select(PCA_comp, everything())
 
 # PC1 is basically just forest/non-forest.
-forest_PC_stack <- predict(forest_stack_sub, rpc_forest) %>% 
+forest_PC_stack <- predict(forest_stack, rpc_forest) %>% 
       c(., forest_stack$forest_mask_buff)
 names(forest_PC_stack) <- gsub("PC", "forest_PC", names(forest_PC_stack))
 
@@ -141,6 +141,6 @@ write.csv(forest_cumulative_df, "PCA_output/csv/forest_cumulative_df.csv")
 fwrite(forest_scores_df, "PCA_output/csv/forest_scores_df.csv")
 write.csv(forest_loadings_df, "PCA_output/csv/forest_loadings_df.csv")
 
-writeRaster(clim_topo_PC_stack, "covariates/processed/clim_topo_PC_stack.tif")
-writeRaster(forest_PC_stack, "covariates/processed/forest_PC_stack.tif")
+writeRaster(clim_topo_PC_stack, "covariates/processed/clim_topo_PC_stack.tif", overwrite=TRUE)
+writeRaster(forest_PC_stack, "covariates/processed/forest_PC_stack.tif", overwrite=TRUE)
 
