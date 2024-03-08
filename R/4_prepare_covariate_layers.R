@@ -77,6 +77,7 @@ values(forest_mask_buff) <- ifelse(values(forest_mask_buff) == TRUE, 1, 0)
 
 # Check if this captures most ant presence records
 sporadic <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
+      filter(source != "dallimore", source != "nym", source != "gaitbarrows", source != "hardcastle") %>% 
       dplyr::select(x, y, species)
 exhaustive <- read.csv('species_data/processed_csv/exhaustive_combined.csv') %>% 
       dplyr::select(x, y, species)
@@ -122,10 +123,19 @@ names(topo_stack_30m) <- c('northness', 'eastness', 'hillshade', 'slope')
 topo_stack_300m <- topo_stack_30m %>% terra::aggregate(fact = 10, fun = 'median', threads = T)
 
 # Effort raster ----------------------------------------------------
-effort_vector <- vect("spatial_other/effort_10km.shp") 
-rast_OS_grid <- rast(ext = ext(effort_vector), crs = crs(effort_vector), res = 10, vals = 1)
+effort_lgcp_vector <- vect("spatial_other/effort_lgcp_10km.shp") 
+effort_integrated_vector <- vect("spatial_other/effort_integrated_10km.shp") 
+
+rast_OS_grid <- rast(ext = ext(effort_lgcp_vector), crs = crs(effort_lgcp_vector), res = 10, vals = 1)
     
-effort_rast_10km <- rasterize(effort_vector, rast_OS_grid, field = "days_sampl") %>% 
+effort_rast_lgcp_10km <- rasterize(effort_lgcp_vector, rast_OS_grid, field = "days_sampl") %>% 
+      crop(ROI) %>% 
+      mask(ROI) %>% 
+      +1 %>% 
+      log() %>% 
+      normalise_raster() 
+
+effort_rast_integrated_10km <- rasterize(effort_integrated_vector, rast_OS_grid, field = "days_sampl") %>% 
       crop(ROI) %>% 
       mask(ROI) %>% 
       +1 %>% 
@@ -143,6 +153,6 @@ writeRaster(topo_stack_300m, "covariates/processed/topo_stack_300m.tif", overwri
 writeRaster(forest_stack_30m, "covariates/processed/forest_stack_30m.tif", overwrite=TRUE)
 writeRaster(forest_stack_300m, "covariates/processed/forest_stack_300m.tif", overwrite=TRUE)
 
-writeRaster(effort_rast_10km, "covariates/processed/effort_rast_10km.tif", overwrite=TRUE)
-
+writeRaster(effort_rast_lgcp_10km, "covariates/processed/effort_rast_lgcp_10km.tif", overwrite=TRUE)
+writeRaster(effort_rast_integrated_10km, "covariates/processed/effort_rast_integrated_10km.tif", overwrite=TRUE)
 
