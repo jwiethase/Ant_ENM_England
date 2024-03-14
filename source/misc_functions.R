@@ -47,6 +47,31 @@ thin_spatial <- function(points, dist_meters, seed = NULL){
       return(points_shuffled[keep_indices, ])
 }
 
+group_thin_spatial <- function(points, dist_meters, seed = NULL, group_var, crs_spec = NULL){
+      if("SpatVector" %in% class(points)){
+            points_df = as.data.frame(points, geom = 'XY')
+      } else {
+            points_df = points
+      }
+      
+      if(is.null(crs)){
+            crs_p = crs(points)
+      } else {
+            crs_p = crs_spec
+      }
+      
+      points_thinned_list <- points_df %>%
+            group_by(get(group_var)) %>% 
+            group_modify(~ {
+                  group_points <- vect(data.frame(.x), geom=c("x", "y"), crs = crs(crs_p))
+                  thinned_group_points <- thin_spatial(group_points, dist_meters, seed)
+                  as.data.frame(thinned_group_points, geom = 'XY')
+            }) %>% 
+            ungroup()
+      
+      return(bind_rows(points_thinned_list))
+}
+
 rsq <- function (x, y) cor(x, y) ^ 2
 
 normalise_raster <- function(spatRaster){
@@ -58,8 +83,9 @@ normalise_raster <- function(spatRaster){
 prepareMGCVsplines <- function(df, colname, n_knots = 3, smooth = 'tp'){
       #' Function based on discussions in: https://groups.google.com/g/r-inla-discussion-group/c/CiA4l9zhCMw
       #' See ?smooth.terms for a list of available spline functions
+      #' fx=FALSE: Penalized regression splines
       require(mgcv)
-            expr_str <- paste0("smoothCon(s(", colname, ", bs = '", smooth, "', k = ", n_knots, ", fx = TRUE), data = df, absorb.cons = TRUE)[[1]]$X")
+            expr_str <- paste0("smoothCon(s(", colname, ", bs = '", smooth, "', k = ", n_knots, ", fx = FALSE), data = df, absorb.cons = TRUE)[[1]]$X")
             base_functions <- eval(parse(text = expr_str))
             
             num_columns <- if (n_knots > 2) { n_knots - 1 } else { n_knots }
@@ -126,4 +152,13 @@ rast_yeo_johnson <- function(rasterlayer, plot = FALSE){
             par(mfrow = c(1, 1))
       }
       return(transformed_lyr)
+}
+
+scale_spline_pairs <- function(r, spline_pair) {
+      vals <- c(values(r[[spline_pair[1]]]), values(r[[spline_pair[2]]]))
+      scaled_vals <- scale(vals)
+      half <- length(scaled_vals) / 2
+      values(r[[spline_pair[1]]]) <- scaled_vals[1:half]
+      values(r[[spline_pair[2]]]) <- scaled_vals[(half + 1):length(scaled_vals)]
+      return(r)
 }
