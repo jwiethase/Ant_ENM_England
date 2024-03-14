@@ -278,10 +278,7 @@ bwars_nitidulus_df <- read.csv('species_data/raw/Formicoxenus nitidulus records 
 
 ## Dallimore sporadic -------------------------------------------------------------
 ## Since we have detailed effort information, we can filter this to match the BWARS effort.
-## This is to supplement the lgcp models based only on sporadic data, and this should be 
-## removed in the integrated models to avoid duplication of records
-## 
-## 
+## This is to supplement the lgcp models based only on sporadic data
 dallimore_effort <- do.call(rbind,
                             lapply(list.files("species_data/raw/dallimore_data/", pattern = ".xls", full.names = T),
                                    read_and_select, type = "xls", cols = c('Date visited', 'Nest ID')
@@ -388,13 +385,14 @@ bwars_all_eff <- read.csv('species_data/raw/20230404 BWARS public data.csv') %>%
 # The dataset for lgcp models contains exhaustive survey data that was thinned to 
 # resemble BWARS data. The sampling effort from this is only suitable for lgcp models
 sporadic_combined <- rbind(bwars_formica_df, hymettus_df, josie_df, bwars_nitidulus_df, 
-                           dallimore_sporadic_thinned, gaitbarrows_sporadic_thinned, hardcastle_sporadic_thinned, nym_sporadic_thinned) %>%
+                           dallimore_sporadic_thinned, gaitbarrows_sporadic_thinned, 
+                           hardcastle_sporadic_thinned, nym_sporadic_thinned) %>%
       vect(geom = c('x', 'y'), crs = crs(km_proj)) %>%  
       thin_spatial(., 20) %>% # Thin closely clustered points
       as.data.frame(geom = 'XY') 
       
 all_eff_lgcp <- rbind(sporadic_combined %>% 
-                            filter(source == "Nitidulus") %>% 
+                            filter(source != "Nitidulus") %>% 
                             dplyr::select(OS_Tile, date),
                       bwars_all_eff %>% 
                             dplyr::select(OS_Tile, date)) %>% 

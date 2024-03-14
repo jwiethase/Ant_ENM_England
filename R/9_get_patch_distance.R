@@ -1,28 +1,31 @@
-#######################################################################################
 # Identify Forestry England-managed patches that might be colonised in the future 
-#######################################################################################
 rm(list = ls())
 library(landscapemetrics)
 library(terra)
 library(tidyterra)
+library(tidyverse)
 source('source/misc_functions.R')
 
 # Parameters ----------------------------------------------------
 species_choice = 'Formica rufa'
 model_choice = 'lgcp'
-point_buffer = 5                    # Buffer around nest records in meter, to account for accuracy
-suitability_threshold = 0.2         # Threshold value for suitability
-max_gap_dist = 600                  # Distance in meters that is considered likely to be dispersed across
+point_buffer = 50                  # Buffer around nest records in meter, to account for GPS inaccuracy
+area_percentile_threshold = 0.01   # Percentile value to determine which forest patch areas are rarely occupied by ants 
+suitability_threshold = 0.25       # Low threshold value for suitability (consider suitable patches as anything above)
+max_gap_dispersal = 1200            # Distance in meters between likely occupied and suitable that is considered likely to be dispersed across naturally
+max_gap_translocation = 25000      # Distance in meters beyond which we consider suitable patches very likely not occupied, and candidates for translocation
+
 
 # Load and prepare data ----------------------------------------------------
 ROI_27700 <- vect('spatial_other/ROI_outline_27700.shp') 
 FE_managed <- vect('spatial_other/Forestry_England_managed_forest.shp')
-forest_stack <- rast('covariates/processed/forest_stack_30m.tif')  %>% 
+forest_stack <- rast('covariates/processed/forest_stack_300m.tif') %>% 
       terra::project(crs('epsg:27700')) 
 
 if(model_choice == 'lgcp'){
-      suitability_map <- rast(paste0('model_out/', gsub(' ', '_', species_choice), '/lgcp/', gsub(' ', '_', species_choice), '_suitability_adj.tif')) %>% 
-            terra::project(crs('epsg:27700')) 
+      suitability_map <- rast('Colin_plots/allPreds_lgcp_Eng_300m.tif')
+      crs(suitability_map) <- crs(km_proj)
+      suitability_map <- suitability_map %>% terra::project(crs('epsg:27700')) 
 }
 
 if(model_choice == 'maxent' & species_choice == 'Formica rufa'){
@@ -65,7 +68,7 @@ forest_patch_area <- spatialize_lsm(forest_mask,
 preferred_area <- terra::extract(forest_patch_area, ant_vect_buff) %>% 
       drop_na()
 
-lower_threshold <- quantile(preferred_area$value, probs = 0.005)
+lower_threshold <- quantile(preferred_area$value, probs = area_percentile_threshold)
 
 # Create forest patch layer above area threshold
 forest_patches_sub <- ifel(forest_patch_area <= lower_threshold, NA, 1)
@@ -91,51 +94,52 @@ suitable_patches <- suitability_map %>%
 
 # Patch areas that are suitable but likely not occupied. 
 SNO_patches <- suitable_patches * (1-ON_patches) # Turns the TRUE/FALSE into 0/1
+SNO_patches <- ifel(SNO_patches == 0, NA, SNO_patches)
 
-# 4. SNO patches that might be colonised (narrow forest gaps) -------------------------------------
+# 4. SNO patches that might be colonised naturally, or might already be colonised (narrow forest gaps) -------------------------------------
 # Create a mask to only keep relevant forest patches (ON or SNO)
-SNO_patches_binary <- ifel(is.na(SNO_patches) | SNO_patches == 0, 0, 1)
+
+# Get IDs of SNO patches
+SNO_IDs <- get_patches(ifel(!is.na(SNO_patches), 1, NA), 
+                                 directions = 8)[[1]][[1]]
+names(SNO_IDs) <- 'patch_ID'
+
+# Identify SNO patches that are within the distance threshold to ON patches
+ON_patches_mask <- ifel(isFALSE(ON_patches), NA, 1)
+ON_patches_buffered_close <- terra::buffer(ON_patches_mask, max_gap_dispersal, background = 0) %>% 
+      subst(0, NA) %>% 
+      as.polygons()
+
+SNO_patches_close <- terra::extract(SNO_IDs, ON_patches_buffered_close, 
+                                    ID = FALSE, 
+                                    touches = T) %>% 
+      drop_na() %>% 
+      unique()
+
+dispersal_patches <- SNO_IDs %>% 
+      filter(patch_ID %in% SNO_patches_close$patch_ID)
+dispersal_patches_binary <- ifel(is.na(dispersal_patches), 0, 1)
+
+# 5. SNO patches that will likely not be colonised naturally (far from ON) -------------------------------------
+# These patches are candidates for translocation
 ON_patches_binary <- ifel(isFALSE(ON_patches), 0, 1)
-all_relevant_patches <- SNO_patches_binary + ON_patches_binary
 
-# Get patch IDs of relevant patches
-relevant_patch_ID <- get_patches(subst(all_relevant_patches, 0, NA), 
-                               directions = 8)[[1]][[1]]
-names(relevant_patch_ID) <- 'patch_ID'
+ON_or_dispersal <- ON_patches_binary + dispersal_patches_binary 
+ON_or_dispersal_mask <- ifel(ON_or_dispersal > 0, 1, NA)
 
-# Identify patch IDs corresponding to ON or SNO
-SNO_IDs <- relevant_patch_ID %>% 
-      mask(subst(SNO_patches_binary, 0, NA))
+ON_patches_buffered_far <- terra::buffer(ON_or_dispersal_mask, max_gap_translocation, background = 0) %>% 
+      subst(0, NA) %>% 
+      as.polygons()
 
-ON_IDs <- relevant_patch_ID %>% 
-      mask(subst(ON_patches_binary, 0, NA))
+SNO_patches_far <- terra::extract(SNO_IDs, ON_patches_buffered_far, 
+                                    ID = FALSE, 
+                                    touches = T) %>% 
+      drop_na() %>% 
+      unique()
 
-# Get all distances
-relevant_patch_dist <- get_nearestneighbour(relevant_patch_ID, return_id = TRUE) %>% 
-      mutate(dist = round(dist))
+translocation_patches <- SNO_IDs %>% 
+      filter(!patch_ID %in% SNO_patches_far$patch_ID)
+translocation_patches_binary <- ifel(is.na(translocation_patches), 0, 1)
 
-# Identify if paired patches are SNO or ON
-relevant_patch_dist$patch_A[relevant_patch_dist$id %in% values(SNO_IDs$patch_ID, na.rm = T)] <- 'SNO'
-relevant_patch_dist$patch_A[relevant_patch_dist$id %in% values(ON_IDs$patch_ID, na.rm = T)] <- 'ON'
-
-relevant_patch_dist$patch_B[relevant_patch_dist$id_neighbour %in% values(SNO_IDs$patch_ID, na.rm = T)] <- 'SNO'
-relevant_patch_dist$patch_B[relevant_patch_dist$id_neighbour %in% values(ON_IDs$patch_ID, na.rm = T)] <- 'ON'
-
-# Get paired patches that were below distance threshold and SNO with ON
-possible_dispersal_pairs <- relevant_patch_dist %>% 
-      filter(dist <= max_gap_dist,
-             patch_A != patch_B)
-
-possible_dispersal_pairs$pair_id <- apply(possible_dispersal_pairs[, c('id', 'id_neighbour')], 1, function(x) paste(sort(x), collapse = '_'))
-SNO_IDs_for_dispersal <- possible_dispersal_pairs[!duplicated(possible_dispersal_pairs$pair_id), ] %>% 
-      mutate(sno_id = case_when(
-            patch_A == 'SNO' ~ as.character(id),
-            patch_B == 'SNO' ~ as.character(id_neighbour)
-      ))
-
-SNO_patches_for_dispersal <- SNO_IDs %>% 
-      filter(patch_ID %in% SNO_IDs_for_dispersal$sno_id) %>% 
-      mask(FE_managed)
-
-# 5. Export -------------------------------------
-writeRaster(SNO_patches_for_dispersal, paste0('model_out/', gsub(' ', '_', species_choice), '/', model_choice, '/', gsub(' ', '_', species_choice), '_SNO_patches_for_dispersal.tif'))
+writeRaster(translocation_patches_binary, "translocation_patches_binary.tif", overwrite=T)
+writeVector(ON_patches_buffered_far, "ON_patches_buffered_far.shp", overwrite=T)

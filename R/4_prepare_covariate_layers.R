@@ -132,15 +132,13 @@ effort_rast_lgcp_10km <- rasterize(effort_lgcp_vector, rast_OS_grid, field = "da
       crop(ROI) %>% 
       mask(ROI) %>% 
       +1 %>% 
-      log() %>% 
-      normalise_raster() 
+      log() 
 
 effort_rast_integrated_10km <- rasterize(effort_integrated_vector, rast_OS_grid, field = "days_sampl") %>% 
       crop(ROI) %>% 
       mask(ROI) %>% 
       +1 %>% 
-      log() %>% 
-      normalise_raster() 
+      log()
 
 # Export ----------------------------------------------------
 writeVector(ROI, "spatial_other/ROI_kmproj.shp", overwrite=TRUE)

@@ -3,6 +3,7 @@ library(tidyverse)
 library(tidyterra)
 library(terra)
 library(mgcv)
+library(data.table)
 
 source('source/misc_functions.R')
 
@@ -11,7 +12,7 @@ clim_topo_PC_stack <- rast("covariates/processed/clim_topo_PC_stack.tif")
 forest_PC_stack <- rast("covariates/processed/forest_PC_stack.tif")
 
 smoother = 'tp'
-n_knots = 4
+n_knots = 3
 
 # Make splines ----------------------------------------------------
 ## Climate splines ---------------------------------------------------- 
@@ -22,8 +23,6 @@ for(i in 1:sum(stringr::str_detect(colnames(clim_topo_df), "PC"))){
       clim_topo_df <- prepareMGCVsplines(clim_topo_df, paste0("clim_topo_PC", i), n_knots = n_knots, smooth = smoother)
 }
 
-# Scale covariates not in splines
-clim_topo_df$lat_raster <- scale(clim_topo_df$lat_raster)
 clim_topo_covariates <- rast(clim_topo_df, type = 'xyz', crs = crs(km_proj))
 
 ## Forest splines ----------------------------------------------------
