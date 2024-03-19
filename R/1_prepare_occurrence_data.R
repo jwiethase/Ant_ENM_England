@@ -10,7 +10,7 @@ source('source/misc_functions.R')
 ROI_27700 <- vect('spatial_other/ROI_outline_27700.shp')
 
 # EXHAUSTIVE SURVEY DATA -------------------------------------------------
-# Suveys where every single nest was recorded within a study area
+# Surveys where every single nest (or close to every nest) was recorded within a study area
 ## Procter et al. 2015 data -------------------------------------------------------------
 procter_df <- read.csv('species_data/raw/Procter_nests.csv') %>% 
       vect(geom = c('x_proj', 'y_proj'), crs = crs('epsg:27700'), keepgeom = FALSE) %>% 
@@ -146,7 +146,6 @@ dallimore_df <- do.call(rbind,
                         lapply(list.files("species_data/raw/dallimore_data/", pattern = ".csv", full.names = T), 
                                read_and_select, type = "csv", cols = c('Longitude', 'Latitude', 'Nest.ID')
                         )) %>% 
-      # merge(., dallimore_effort, by = 'Nest.ID') %>% 
       vect(geom = c('Longitude', 'Latitude'), crs = crs('epsg:4326'), keepgeom = FALSE) %>% 
       terra::project(crs('epsg:27700')) %>% 
       terra::crop(ROI_27700) %>%       
@@ -160,7 +159,7 @@ dallimore_df <- do.call(rbind,
 exhaustive_combined <- rbind(procter_df, gaitbarrows_df, hardcastle_df, nym_df, longshaw_df, dallimore_df)
 
 # SPORADIC SURVEY DATA -------------------------------------------------
-# Suveys where volunteers mostly recorded one nest and then moved on
+# Surveys where volunteers mostly recorded one nest and then moved on
 ## BWARS data -------------------------------------------------------------
 bwars_formica_df <- read.csv('species_data/raw/20240105_bwars_data.csv') %>% 
       mutate(easting = rnrfa::osg_parse(gridref)$easting,
@@ -229,18 +228,12 @@ josie_df <- read.csv('species_data/raw/josie_survey_2.csv') %>%
       as.data.frame(geom = 'XY') %>% 
       dplyr::select(species, x, y, date, OS_Tile, source)
 
-josie_thinned_list <- josie_df %>%
-      group_by(date) %>% 
-      group_modify(~ {
-            group_points <- vect(data.frame(.x), geom=c("x", "y"), crs = crs(km_proj))
-            thinned_group_points <- thin_spatial(group_points, dist_meters = 100)
-            as.data.frame(thinned_group_points, geom = 'XY')
-      })
-
-josie_thinned <- bind_rows(josie_thinned_list)
+# Apply thinning to date groups, ensuring that effort information is retained 
+josie_thinned <- group_thin_spatial(josie_df, group_var = "date", dist_meters = 100, crs_spec = km_proj) %>% 
+      dplyr::select(species, x, y, date, OS_Tile, source) 
 
 ## BWARS F. nitidulus data -------------------------------------------------------------
-# F. nitidulus always occurs in wood ant nest. Can tell from latitude which wood ant, and derive their presence
+# F. nitidulus always occurs in wood ant nests. Can tell from latitude which wood ant, and derive their presence
 # Find limits of F. lugubris and F. rufa presence records, add a somewhat arbitrary 25 km buffer, just in case
 F_lugubris_lowest <- min(rbind(procter_df$y, 
                                longshaw_df$y,
@@ -388,7 +381,7 @@ sporadic_combined <- rbind(bwars_formica_df, hymettus_df, josie_df, bwars_nitidu
                            dallimore_sporadic_thinned, gaitbarrows_sporadic_thinned, 
                            hardcastle_sporadic_thinned, nym_sporadic_thinned) %>%
       vect(geom = c('x', 'y'), crs = crs(km_proj)) %>%  
-      thin_spatial(., 20) %>% # Thin closely clustered points
+      thin_spatial(., 20) %>% # Thin closely clustered points, potential duplicates
       as.data.frame(geom = 'XY') 
       
 all_eff_lgcp <- rbind(sporadic_combined %>% 
