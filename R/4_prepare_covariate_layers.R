@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Prepare the covariate layers needed for the suitability models
+
 rm(list = ls())
 library(tidyverse)
 library(tidyterra)
