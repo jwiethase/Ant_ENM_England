@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Collate and process available species records for the study species. Extract sampling effort.
+
 rm(list = ls())
 library(tidyverse)
 library(rnrfa)
