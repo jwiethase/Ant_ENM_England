@@ -1,3 +1,13 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Apply further processing to the pre-processed climate layers
+# - Rainfall and temperature summary of the coldest and hottest quarters of the years 2010-2013
+# - Longest dry spell duration
+
 rm(list = ls())
 library(tidyverse)
 library(tidyterra)
