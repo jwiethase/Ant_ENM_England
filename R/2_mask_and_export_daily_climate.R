@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Pre-process previously downloaded climate rasters, by cropping, masking, and re-projecting
+
 rm(list = ls())
 library(tidyverse)
 library(tidyterra)
