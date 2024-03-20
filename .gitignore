@@ -7,3 +7,6 @@ spatial_other/
 species_data/
 PCA_output/csv/
 **/.DS_Store
+PCA_output/
+figures/
+model_out/
