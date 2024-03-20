@@ -9,46 +9,53 @@ library(data.table)
 setwd('/users/jhw538/scratch/ant_modelling')
 source('source/misc_functions.R')
 
-args <- commandArgs(trailingOnly=TRUE)
-job <- as.integer(args[1])
+# args <- commandArgs(trailingOnly=TRUE)
+# job <- as.integer(args[1])
 
 # Load data ----------------------------------------------------
 ROI <- vect('data/ROI_kmproj.shp')
-forest_PC_stack <- rast("data/forest_PCA_30m.tif")
-clim_topo_PC_stack <- rast("data/clim_topo_PCA_30m.tif")
+forest_mask_buff <- rast('data/forest_mask_buff_30m.tif') %>% 
+      subst(0, NA)
+forest_PC_stack <- rast("data/forest_PCA_30m.tif") %>% 
+      mask(forest_mask_buff)
+# clim_topo_PC_stack <- rast("data/clim_topo_PCA_30m.tif")
 
-smoother_list = c('tp', 'cr')
+# smoother_list = c('tp')
 n_knots = 3
 
-smoother = smoother_list[job]
+smoother = 'tp'
 print(n_knots)
 
 # Make splines ----------------------------------------------------
-## Climate splines ---------------------------------------------------- 
-clim_topo_df <- as.data.table(clim_topo_PC_stack, xy = TRUE) %>%
-      drop_na()
-
-for(i in 1:6){
-      clim_topo_df <- prepareMGCVsplines(clim_topo_df, paste0("clim_topo_PC", i), n_knots = n_knots, smooth = smoother)
-}
-
-print("climtopo splines done")
-
-clim_topo_df <- clim_topo_df %>% dplyr::select(contains(c("x", "y", "spline", "lat_raster")))
-clim_topo_covariates <- rast(clim_topo_df, type = 'xyz', crs = crs(km_proj))
-
-writeRaster(clim_topo_covariates, paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif"), overwrite=TRUE)
-print("climtopo spline stack done")
+# ## Climate splines ---------------------------------------------------- 
+# clim_topo_df <- as.data.table(clim_topo_PC_stack, xy = TRUE) %>%
+#       drop_na()
+# 
+# for(i in 1:6){
+#       clim_topo_df <- prepareMGCVsplines(clim_topo_df, paste0("clim_topo_PC", i), n_knots = n_knots, smooth = smoother)
+# }
+# 
+# print("climtopo splines done")
+# 
+# clim_topo_df <- clim_topo_df %>% dplyr::select(contains(c("x", "y", "spline", "lat_raster")))
+# clim_topo_covariates <- rast(clim_topo_df, type = 'xyz', crs = crs(km_proj))
+# 
+# writeRaster(clim_topo_covariates, paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif"), overwrite=TRUE)
+# print("climtopo spline stack done")
 
 ## Forest splines ----------------------------------------------------
-forest_df <- as.data.table(forest_PC_stack, xy = TRUE) %>%
-      drop_na()
+forest_df <- as.data.table(forest_PC_stack, xy = TRUE)
+
+summary(forest_df)
 
 # Create dataset for splines, this is forest only
 forest_df_splines <- forest_df %>% 
-      filter(forest_mask_buff == 1)
+      dplyr::select(-forest_mask) %>% 
+      drop_na()
 
-for(i in 2:4){
+summary(forest_df_splines)
+
+for(i in 1:2){
       forest_df_splines <- prepareMGCVsplines(forest_df_splines, paste0("forest_PC", i), n_knots = n_knots, smooth = smoother)
 }
 
@@ -62,11 +69,11 @@ forest_df_merged <- merge(forest_df,
                           by = c("x", "y"), all.x = T)
 print("forest merge done")
 forest_df_merged_sub <- forest_df_merged %>%
-                                dplyr::select(contains(c("x", "y", "PC2_spline", "PC3_spline", "PC4_spline", "forest_mask_buff")))
+                                dplyr::select(contains(c("x", "y", "spline")))
 
 forest_covariates <- rast(forest_df_merged_sub, type = 'xyz', crs = crs(km_proj))
 
 print("forest spline stack done")
 
-writeRaster(forest_covariates, paste0("data/3forest_", smoother, "_", n_knots, "k.tif"), overwrite=TRUE)
+writeRaster(forest_covariates, paste0("data/2forest_", smoother, "_", n_knots, "k.tif"), overwrite=TRUE)
 

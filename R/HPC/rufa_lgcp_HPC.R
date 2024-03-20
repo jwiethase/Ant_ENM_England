@@ -21,17 +21,17 @@ predictions_resolution <- 5
 species_choice = "Formica rufa"
 print(species_choice)
 
-max_edges <- c(5, 7, 9)
-ranges <- c(50, 100, 150)
-range_p_list <- c(0.1)
-smoother_list = c('tp')
+max_edges <- c(7, 9)
+ranges <- c(150, 200, 250)
+range_p_list <- c(0.1, 0.5)
+smoother_list = c('tp', 'cr')
 n_knots_list = c(3)
-sigma_list = c(0.1, 1)
+sigma_list = c(0.1)
 sigma_p_list = c(0.01)
-thin_dist_list = c(150)
+thin_dist_list = c(0, 100)
 
 mult_combs <- crossing(max_edges, ranges, range_p_list, smoother_list, n_knots_list,  
-                       sigma_list, sigma_p_list, thin_dist_list) # 18
+                       sigma_list, sigma_p_list, thin_dist_list) # 48
 comb_values <- mult_combs[job, ]
 print(comb_values)
 
@@ -49,14 +49,21 @@ prior_range = c(range, range_p)
 
 # DATA FILES ------------------------------------------
 ROI <- vect('data/ROI_kmproj.shp')
+forest_stack <- rast("data/forest_stack_30m.tif")
 
-clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif")) %>% 
-      tidyterra::select(contains(c("spline", "lat_raster")))
+clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif"))
 clim_topo_covariates$lat_raster <- terra::scale(clim_topo_covariates$lat_raster)
 
-forest_covariates <- rast(paste0("data/3forest_", smoother, "_", n_knots, "k.tif")) %>%
-      terra::subset(!stringr::str_detect(names(.), "PC4")) 
-forest_covariates$forest_mask_buff <- ifel(forest_covariates$forest_mask_buff == 0, 1, 2)
+forest_covariates <- rast(paste0("data/2forest_30m_cr_3k.tif")) 
+
+distance_ancient <- forest_stack %>% 
+      tidyterra::select(distance_ancient) %>% 
+      terra::scale()
+
+forestdummy <- rast("data/forest_mask_buff_30m.tif") %>% 
+      terra::scale() %>% 
+      mask(ROI)
+names(forestdummy) <- "forest_mask_buff"
 
 effort_rast_10km <- rast('data/effort_rast_lgcp_10km.tif')  %>% 
       terra::scale()
@@ -68,9 +75,8 @@ sporadic_sf <- read.csv('data/sporadic_combined.csv') %>%
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
       thin_spatial(., dist_meters = thin_dist, seed = 123) %>% 
       st_as_sf() %>% 
-      cbind(terra::extract(forest_covariates$forest_mask_buff, .)[, 2]) %>%
-      rename(forestmask = "terra..extract.forest_covariates.forest_mask_buff.......2.") %>% 
-      filter(forestmask == max(values(forest_covariates$forest_mask_buff, na.rm = T)))
+      cbind(terra::extract(forestdummy, ., ID = FALSE)) %>%
+      filter(forest_mask_buff == max(values(forestdummy, na.rm = T)))
 
 # CREATE MESH -------------------------------------------------------
 boundary <- st_as_sf(ROI) %>% as("Spatial") 
@@ -92,9 +98,10 @@ matern <- inla.spde2.pcmatern(
 
 # Construct model formula
 base_terms <- c("coordinates ~ Intercept(1)",
-                "forestdummy(main = forest_covariates$forest_mask_buff, model = 'factor_contrast')",
+                "forestdummy(main = forestdummy$forest_mask_buff, model = 'linear')",
+                "distance_ancient(main = distance_ancient$distance_ancient, model = 'linear')",
                 "lat_raster(main = clim_topo_covariates$lat_raster, model = 'linear')",
-                "effort(main = effort_rast_10km, model = 'linear')",
+                "effort(main = effort_rast_10km$days_sampl, model = 'linear')",
                 "mySPDE(main = coordinates, model = matern)")
 
 if(n_knots == 2){n_splines = 2} else {n_splines = n_knots-1}
@@ -114,8 +121,6 @@ model <- lgcp(form,
                              verbose = FALSE))
 summary(model)
 if(sum(abs(model$summary.fixed$`0.5quant`)) < 1 | 
-   model$summary.hyperpar[1, 2] > model$summary.hyperpar[1, 1] |
-   # model$summary.hyperpar[1, 2] < model$summary.hyperpar[1, 1] * 0.001 |
    model$summary.hyperpar[1, 1] < model$summary.hyperpar[2, 1]){
       stop("Random field estimation failed, reconsider priors/mesh specification.")
 }
@@ -136,7 +141,7 @@ fixed_effects_effort <- gsub("effort", "quantile(effort, probs = 0.95, na.rm=T)"
 
 save(model, grid_points, mesh, fixed_effects_effort,
      file = paste0("model_out/Formica_rufa/lgcp/", logCPO, "_all30m_", n_knots, "k_", smoother, "_", 
-                   sub(" ", "_", species_choice), "_E", max.edge,
+                   sub(" ", "_", species_choice), "_E", max.edge, "_thin", thin_dist,
                    "_r", prior_range[1], "_", prior_range[2], 
                    "_s", prior_sigma[1], "_", prior_sigma[2], ".RData"))
 
@@ -146,12 +151,12 @@ print("Model saved")
 suitability <- predict(object = model, 
                        newdata = grid_points,
                        formula = as.formula(paste0("~ mySPDE + ", fixed_effects_effort)),
-                       n.samples = 1000)
+                       n.samples = 100)
 
 random_field <- predict(object = model, 
                         newdata = grid_points,
                         formula = ~ mySPDE,
-                        n.samples = 1000)
+                        n.samples = 100)
 
 suitability_raster <- as.data.frame(suitability) %>% 
       dplyr::select(x, y, q0.025, q0.5, q0.975, sd) %>% 

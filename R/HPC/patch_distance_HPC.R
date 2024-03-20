@@ -14,43 +14,49 @@ job <- as.integer(args[1])
 
 # Parameters ----------------------------------------------------
 species_choices = c('Formica rufa', 'Formica lugubris')
-max_trans_distances <- c(0, 5, 10, 25)
+max_trans_distances <- c(0, 2, 5, 10, 25)
+ON_thresholds <- c(0.25, 0.5)
+SNO_thresholds <- c(0.5, 0.75)
 
-mult_combs <- crossing(species_choices, max_trans_distances) # 8
+mult_combs <- crossing(species_choices, max_trans_distances, ON_thresholds, SNO_thresholds) # 40
 comb_values <- mult_combs[job, ]
 print(comb_values)
 
 species_choice = comb_values$species_choices
-max_trans_dist = comb_values$max_trans_distances
-print(paste("Starting", species_choice))
+max_gap_translocation = comb_values$max_trans_distances
+ON_threshold = comb_values$ON_thresholds
+SNO_threshold = comb_values$SNO_thresholds
+print(paste('Starting', species_choice))
 
 model_choice = 'maxent'
 point_buffer = 0.05                  
-ON_threshold = 0.1
-SNO_threshold = 0.25       
 max_gap_dispersal = 0.1        
-max_gap_translocation = max_trans_dist     
 
-dir.create(paste0("model_out/", gsub(" ", "_", species_choice),'/', model_choice, '/maxTransDist_', max_gap_translocation, 'km'), showWarnings = F)
+dir.create(paste0('model_out/', gsub(' ', '_', species_choice),'/', model_choice, '/maxTransDist_', max_gap_translocation, 'km'), showWarnings = F)
 
 # Load and prepare data ----------------------------------------------------
 FE_managed <- vect('data/Forestry_England_managed_forest.shp') %>% 
       project(crs(km_proj))
-forest_stack <- rast('data/forest_stack_30m.tif') 
+forest_stack <- rast('data/forest_stack_30m.tif') %>%
+      terra::project(crs('epsg:27700'))
 
 if(model_choice == 'maxent' & species_choice == 'Formica rufa'){
-      suitability_map <- rast('model_out/Formica_rufa/maxent/Formica_rufa_3k_tp_all30m_thin0.5km.tif') 
+      suitability_map <- rast('model_out/Formica_rufa/maxent/sporadic_Formica_rufa_3k_tp_all30m_thin250m.tif') 
 }
 
 if(model_choice == 'maxent' & species_choice == 'Formica lugubris'){
-      suitability_map <- rast('model_out/Formica_lugubris/maxent/Formica_lugubris_3k_tp_all30m_thin0.5km.tif')
+      suitability_map <- rast('model_out/Formica_lugubris/maxent/sporadic_Formica_lugubris_3k_tp_all30m_thin100m.tif')
 }
 
-forest_buffer_mask <- ifel(forest_stack$forest_mask_buff, 0, NA)
-forest_buffer_mask <- resample(forest_buffer_mask, suitability_map)
-
-suitability_map <- suitability_map %>% 
-      mask(forest_buffer_mask)
+if(model_choice == 'lgcp'){
+      forest_mask_buff <- rast("data/forest_mask_buff_30m.tif") %>%
+            terra::resample(suitability_map, method = "max") %>% 
+            subst(0, NA)
+      
+      suitability_map <- suitability_map %>% 
+            mask(forest_mask_buff) %>% 
+            select(q0.5)     
+}
 
 sporadic <- read.csv('data/sporadic_combined.csv') %>% 
       filter(source != 'dallimore', source != 'nym', source != 'gaitbarrows', source != 'hardcastle') %>% 
@@ -66,20 +72,15 @@ ant_vect <- combined_presences %>%
 
 ant_vect_buff <- terra::buffer(ant_vect, width = point_buffer)
 
-# 1. Create raster of forest patches for England ----------------------------------------------------
+# 1. Identify areas likely now occupied (ON) ----------------------------------------------------
 suitable_forest_forON <- suitability_map %>% 
       clamp(lower = ON_threshold, values = F)
-
 suitable_forest_forON_mask <- ifel(is.na(suitable_forest_forON), NA, 1)
-
-suitable_forest_forSNO <- suitability_map %>% 
-      clamp(lower = SNO_threshold, values = F)
 
 suitable_forest_forON_ID <- get_patches(suitable_forest_forON_mask, 
                                         directions = 8)[[1]][[1]]
 names(suitable_forest_forON_ID) <- 'patch_ID'
 
-# 2. Overlay nest locations with suitable forest patches to identify forest patches likely now occupied (ON) ----------------------------------------------------
 ON_patch_IDs <- terra::extract(suitable_forest_forON_ID, ant_vect_buff) %>% 
       drop_na()
 
@@ -110,24 +111,44 @@ writeRaster(ON_patches_gradient,
                    '_ON_patches_gradient.tif'), 
             overwrite = T)
 
-print("ON patches done")
+print('ON patches done')
 
-# 3. Create raster of forest patches suitable but likely not occupied now (SNO) -------------------------------------
+# 2. Create raster of forest patches suitable but likely not occupied now (SNO) -------------------------------------
+# What forest patch area do the ants prefer?
+forest_mask <- ifel(forest_stack$cover_VOM < 0.3, NA, 1)
+
+forest_patch_area <- spatialize_lsm(forest_mask,
+                                    level = 'patch',
+                                    metric = 'area')[[1]][[1]]
+
+preferred_area <- terra::extract(forest_patch_area, ant_vect_buff) %>%
+      drop_na()
+
+# Find forest patch area that 1% or less of nest records occur below
+lower_threshold <- quantile(preferred_area$value, probs = 0.01)  
+
+forest_area_mask <- ifel(forest_patch_area <= lower_threshold, 0, 1) %>% 
+      terra::project(suitability_map) %>% 
+      subst(0, NA)
+
+# Get suitable areas only, for SNO patches. 
+suitable_forest_forSNO <- suitability_map %>% 
+      clamp(lower = SNO_threshold, values = F) %>% 
+      mask(forest_area_mask)
+
 # Patch areas that are suitable but likely not occupied. 
 SNO_patches <- suitable_forest_forSNO * (1-ON_patches_binary) # Turns the TRUE/FALSE into 0/1
 SNO_patches <- ifel(SNO_patches == 0, NA, SNO_patches)
 
-print("SNO patches done")
+print('SNO patches done')
 
-# 4. SNO patches that might be colonised naturally, or might already be colonised (narrow forest gaps) -------------------------------------
-# Create a mask to only keep relevant forest patches (ON or SNO)
-
-# Get IDs of SNO patches
+# 3. SNO patches that might be colonised naturally, or might already be colonised (narrow forest gaps) -------------------------------------
 SNO_IDs <- get_patches(ifel(!is.na(SNO_patches), 1, NA), 
                        directions = 8)[[1]][[1]]
 names(SNO_IDs) <- 'patch_ID'
 
 # Identify SNO patches that are within the distance threshold to ON patches
+ON_patches_mask <- ifel(isFALSE(ON_patches_binary), NA, 1)
 ON_patches_buffered_close <- terra::buffer(ON_patches_mask, max_gap_dispersal, background = 0) %>% 
       subst(0, NA) %>% 
       as.polygons()
@@ -163,9 +184,9 @@ writeRaster(dispersal_patches_gradient,
                    '_disp_gradient_', max_gap_dispersal*1000, 'm.tif'), 
             overwrite = T)
 
-print("Dispersal patches done")
+print('Dispersal patches done')
 
-# 5. SNO patches that will likely not be colonised naturally (far from ON) -------------------------------------
+# 4. SNO patches that will likely not be colonised naturally (far from ON) -------------------------------------
 # These patches are candidates for translocation
 dispersal_patches_binary <- ifel(is.na(dispersal_patches_mask), 0, 1)
 
@@ -211,7 +232,8 @@ writeRaster(translocation_patches_gradient,
                    '_SNO_Thresh', SNO_threshold,
                    '_trans_gradient_', max_gap_translocation, 'km.tif'), 
             overwrite = T)
-print("Translocation patches done")
+
+print('Translocation patches done')
 
 translocation_FE <- translocation_patches %>% 
       crop(FE_managed) %>% 
@@ -241,6 +263,15 @@ writeRaster(translocation_mask_FE,
                    '_SNO_Thresh', SNO_threshold,
                    '_transMask_FE_', max_gap_translocation, 'km.tif'), 
             overwrite = T)
-print("Translocation patches FE done")
+
+writeRaster(translocation_gradient_FE, 
+            paste0('model_out/', gsub(' ', '_', species_choice), '/', model_choice, '/maxTransDist_', max_gap_translocation, 'km/', gsub(' ', '_', species_choice), 
+                   '_', model_choice,
+                   '_pointBuff_', point_buffer,
+                   '_ON_Thresh', ON_threshold,
+                   '_SNO_Thresh', SNO_threshold,
+                   '_transGradient_FE_', max_gap_translocation, 'km.tif'), 
+            overwrite = T)
+print('Translocation patches FE done')
 
 

@@ -15,7 +15,7 @@ job <- as.integer(args[1])
 
 # SET PARAMETERS ------------------------------------------
 species_choices <- c("Formica rufa", "Formica lugubris")
-thin_list = c(100, 250, 500, 1000)
+thin_list = c(0, 100, 250)
 
 mult_combs <- crossing(species_choices, thin_list) # 6
 comb_values <- mult_combs[job, ]
@@ -25,7 +25,7 @@ species_choice = comb_values$species_choices
 thin_dist = comb_values$thin_list 
 
 n_knots = 3
-smoother = "cr"
+smoother = "tp"
 
 covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC2_spline1", "clim_topo_PC2_spline2",
@@ -33,40 +33,54 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC4_spline1", "clim_topo_PC4_spline2",
                       "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
                       "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
+                      "forest_PC1_spline1", "forest_PC1_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
-                      "forest_PC3_spline1", "forest_PC3_spline2",
-                      "lat_raster",
-                      "forest_mask_buff")
+                      "distance_ancient")
 
 dir.create(paste0("model_out/", gsub(" ", "_", species_choice)), showWarnings = F)
 dir.create(paste0("model_out/", gsub(" ", "_", species_choice), "/maxent"), showWarnings = F)
 dir.create(paste0("figures/", gsub(" ", "_", species_choice)), showWarnings = F)
 dir.create(paste0("figures/", gsub(" ", "_", species_choice), "/maxent"), showWarnings = F)
 
-
 # DATA FILES ------------------------------------------
-ROI <- vect('data/ROI_outline_27700.shp') %>% 
-      terra::project(crs(km_proj))
+bg_bias <- read.csv('data/maxent_bias_points_1000.csv') %>% 
+      dplyr::select(x, y)
+forest_stack <- rast("data/forest_stack_30m.tif")
+
+forest_covariates <- rast(paste0("data/2forest_30m_", smoother, "_", n_knots, "k.tif"))
+
+forest_mask_buff <- rast("data/forest_mask_buff_30m.tif") %>%
+      terra::resample(forest_covariates) %>% 
+      subst(0, NA)
+
+clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif")) %>% 
+      terra::resample(forest_covariates) 
+
+print("clim_topo_covariates done")
+
+distance_ancient <- forest_stack %>% 
+      tidyterra::select(distance_ancient) %>% 
+      terra::resample(forest_covariates) 
+
+distance_ancient <- distance_ancient %>% 
+      terra::scale()
+
+print("distance_ancient done")
+
+covariates_stack <- c(forest_covariates, clim_topo_covariates, distance_ancient) %>% 
+      terra::mask(forest_mask_buff)
+
+predictors <- raster::subset(stack(covariates_stack), subset = covars_selection)     
+
+print("predictors done")
+
 sporadic <- read.csv('data/sporadic_combined.csv') %>% 
       filter(species == species_choice) %>% 
       dplyr::select(x, y)
-exhaustive <- read.csv('data/exhaustive_combined.csv') %>% 
-      filter(species == species_choice) %>% 
-      dplyr::select(x, y)
 
-clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, "k.tif"))
-forest_covariates <- rast(paste0("data/2forest_", smoother, "_", n_knots, "k.tif")) %>% 
-      resample(clim_topo_covariates)
-covariates <- stack(stack(forest_covariates), stack(clim_topo_covariates))
-predictors <- raster::subset(covariates, subset = covars_selection)      
-
-effort_rast_10km <- raster('data/effort_rast_10km.tif') %>% 
-      disaggregate(fact = res(.)/res(clim_topo_covariates)) %>% 
-      raster::resample(., raster(clim_topo_covariates), method = "bilinear")
-
-thinned_presences <- rbind(sporadic, exhaustive) %>% 
+thinned_presences <- sporadic %>% 
       vect(geom = c('x', 'y'), crs = crs(km_proj)) %>% 
-      thin_spatial(., dist_meters = thin_dist) %>% 
+      thin_spatial(., dist_meters = thin_dist, seed = 42) %>% 
       as.data.frame(geom = "XY")
 
 # PARTITION ------------------------------------------
@@ -76,44 +90,50 @@ occtrain <- thinned_presences[fold != 1, ]
 
 # TRAINING ------------------------------------------
 ## FIT MAXENT MODEL & PREDICT ------------------------------------------
+print("starting maxent")
 me <- maxent(x = predictors, p = thinned_presences, 
-             nbg = 5e04)
+             a = bg_bias)
+
+print("Maxent done")
 
 suitability_raster <- predict(me, predictors, progress='text') %>% 
       rast()
-plot(suitability_raster)
 
-# TESTING ------------------------------------------
-bg <- randomPoints(predictors, 10000)
-
-e1 <- evaluate(me, p = occtest, a = bg, x = predictors)
-
-pvtest <- data.frame(extract(predictors, occtest))
-avtest <- data.frame(extract(predictors, bg))
-
-e2 <- evaluate(me, p = pvtest, a = avtest)
-
-testp <- predict(me, pvtest) 
-testa <- predict(me, avtest) 
-
-e3 <- evaluate(p = testp, a = testa)
-e3
-threshold(e3)
-
-plot(e3, 'ROC')
-
-## EXPORT ------------------------------------------
 writeRaster(suitability_raster, 
-            filename = paste0("model_out/", gsub(" ", "_", species_choice), "/maxent/", 
-                              gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all300m_thinned.tif"), overwrite = T)
+            filename = paste0("model_out/", gsub(" ", "_", species_choice), "/maxent/sporadic_", 
+                              gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all30m_thin", thin_dist, "m.tif"), overwrite = T)
 
-pdf(paste0("figures/", gsub(" ", "_", species_choice), "/maxent/", 
-           gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all300m_thinned.pdf"), width = 14, height = 9)
+print("suitability_raster done")
+
+pdf(paste0("figures/", gsub(" ", "_", species_choice), "/maxent/sporadic_", 
+           gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all30m_thin", thin_dist, "m.pdf"), width = 14, height = 9)
 par(mfrow=c(1, 2))
 plot(me)
 plot(suitability_raster, main = paste0("Maxent suitability: ", species_choice))
 dev.off()
 par(mfrow=c(1, 1))
+
+# TESTING ------------------------------------------
+bg <- randomPoints(predictors, 10000)
+
+pvtest <- data.frame(raster::extract(predictors, occtest))
+avtest <- data.frame(raster::extract(predictors, bg))
+
+testp <- predict(me, pvtest) 
+testa <- predict(me, avtest) 
+
+e <- evaluate(p = testp, a = testa)
+
+pdf(paste0("figures/", gsub(" ", "_", species_choice), "/maxent/sporadic_Eval_", 
+           gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all30m_thin", thin_dist/1000, "km.pdf"), width = 14, height = 9)
+par(mfrow=c(2, 2))
+plot(e, 'ROC')
+plot(e, 'TPR')
+boxplot(e)
+density(e)
+dev.off()
+
+
 
 
 
