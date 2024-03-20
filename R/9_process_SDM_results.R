@@ -2,6 +2,7 @@
 rm(list = ls())
 library(terra)
 library(tidyverse)
+library(tidyterra)
 library(viridis)
 library(patchwork)
 source('source/misc_functions.R')
@@ -27,22 +28,23 @@ cropton <- FE_managed %>%
       fillHoles
 
 # The model outputs
-lgcp_rufa_300m_suit <- rast('model_out/Formica_rufa/lgcp/final_allpreds_all300m_3k_tp_Formica_rufa_E7_mult0.5_r207_0.1_s0.1_0.01.tif')
-lgcp_lugubris_300m_suit <- rast('model_out/Formica_lugubris/lgcp/final_allpreds_all300m_3k_cr_Formica_lugubris_E9_mult0.1_r32_0.1_s0.1_0.01.tif')
+lgcp_rufa <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_fixedOnly300m_300mRes.tif')
+lgcp_lugubris <- rast('model_out/Formica_lugubris/lgcp/Formica_lugubris_fixedOnly300m_300mRes.tif')
 
-maxent_rufa_30m <- rast('model_out/Formica_rufa/maxent/Formica_rufa_thin500_3k_cr_all30m_thinned.tif')
-maxent_lugubris_30m <- rast('model_out/Formica_lugubris/maxent/Formica_lugubris_thin1000_3k_cr_all30m_thinned.tif')
+maxent_rufa <- rast('model_out/Formica_rufa/maxent/sporadic_Formica_rufa_3k_tp_all30m_thin100m.tif') %>% 
+      mask(mask)
+maxent_lugubris <- rast('model_out/Formica_lugubris/maxent/sporadic_Formica_lugubris_3k_tp_all30m_thin0m.tif')
 
 # PROCESS MODEL RESULTS ---------------------------------------
 for(i in c("Formica rufa", "Formica lugubris")){
       species_choice = i
       
-      if(i == "Formica rufa"){
-            lgcp_suit_result = lgcp_rufa_300m_suit
-            maxent_result = maxent_rufa_30m
+      if(species_choice == "Formica rufa"){
+            lgcp_suit_result = lgcp_rufa
+            maxent_result = maxent_rufa
       } else {
-            lgcp_suit_result = lgcp_lugubris_300m_suit
-            maxent_result = maxent_lugubris_30m
+            lgcp_suit_result = lgcp_lugubris
+            maxent_result = maxent_lugubris
       }
       
       crs(lgcp_suit_result) <- crs(km_proj)
@@ -63,11 +65,10 @@ for(i in c("Formica rufa", "Formica lugubris")){
       
       # Suitability estimates on intensity scale, in locations where ants are present
       suitable_present <- terra::extract(lgcp_suit_result, combined_presences)[, "q0.5"]
-      suitable_present <- terra::extract(lgcp_suit_result, combined_presences)[, "q0.5"]
       # Get suitability threshold. Since some odd records might have been found in places that
       # are not actually suitable at all, we trim the bottom end to remove these outliers
-      suitability_threshold <- quantile(suitable_present, probs = 0.01)
-      hist(suitable_present)
+      suitability_threshold <- quantile(suitable_present, probs = 0.05, na.rm = T)
+      hist(suitable_present, main = species_choice)
       abline(v = suitability_threshold, col = "blue")
       
       # SUITABILITY MAP ---------------------------------------
@@ -76,7 +77,6 @@ for(i in c("Formica rufa", "Formica lugubris")){
             clamp(lower = suitability_threshold, values = F) %>% 
             # Change scale to go from 0 to 1
             normalise_raster() %>% 
-            subst(NA, 0) %>% 
             mask(ROI) %>% 
             tidyterra::select(q0.5) 
       
@@ -86,19 +86,23 @@ for(i in c("Formica rufa", "Formica lugubris")){
       dev.off()
 
       # EXPORT ---------------------------------------
-      writeRaster(suit_lgcp_Eng, filename = paste0('model_out/', gsub(" ", "_", species_choice), '/lgcp/', gsub(" ", "_", species_choice),'_suitability_adj.tif'), overwrite=TRUE)
+      writeRaster(suit_lgcp_Eng, filename = paste0('model_out/', gsub(" ", "_", species_choice), '/lgcp/', gsub(" ", "_", species_choice),'_suitability_adj_300m.tif'), overwrite=TRUE)
 
       # SELECTED SUITABILITY PLOTS ---------------------------------------
       ## LGCP ---------------------------------------
-      new_forest_suit_lgcp <- suit_lgcp_Eng %>% 
+      # Clamp more to highlight the suitable areas
+      suit_lgcp_Eng_plots <- suit_lgcp_Eng %>% 
+            clamp(lower = 0.25, values = F) 
+      
+      new_forest_suit_lgcp <- suit_lgcp_Eng_plots %>% 
             crop(new_forest) %>% 
             mask(new_forest)
       
-      ennerdale_suit_lgcp <- suit_lgcp_Eng %>% 
+      ennerdale_suit_lgcp <- suit_lgcp_Eng_plots %>% 
             crop(ennerdale) %>% 
             mask(ennerdale)
       
-      cropton_suit_lgcp <- suit_lgcp_Eng %>% 
+      cropton_suit_lgcp <- suit_lgcp_Eng_plots %>% 
             crop(cropton) %>% 
             mask(cropton)
       
@@ -125,51 +129,56 @@ for(i in c("Formica rufa", "Formica lugubris")){
       
       combined_lgcp <- ggpubr::ggarrange(new_forest_lgcp, cropton_lgcp, ennerdale_lgcp, 
                                          common.legend = T, ncol = 3, nrow = 1, legend = "bottom")
+      combined_lgcp
+      
       ggsave(plot = combined_lgcp, 
              filename = paste0("figures/", gsub(" ", "_", species_choice),"/", gsub(" ", "_", species_choice), "_lgcp_suit_examples.png"),
-             width = 7.15, height = 3, units = "in")
+             width = 10, height = 3.5, units = "in", dpi = 300)
       
       ## Maxent ---------------------------------------
-      new_forest_suit_maxent <- maxent_result %>% 
-            crop(new_forest) %>% 
+      maxent_result_plots <- maxent_result %>% 
+            clamp(lower = 0.25, values = F) 
+      
+      new_forest_suit_maxent <- maxent_result_plots %>%
+            crop(new_forest) %>%
             mask(new_forest)
-      
-      ennerdale_suit_maxent <- maxent_result %>% 
-            crop(ennerdale) %>% 
+
+      ennerdale_suit_maxent <- maxent_result_plots %>%
+            crop(ennerdale) %>%
             mask(ennerdale)
-      
-      cropton_suit_maxent <- maxent_result %>% 
-            crop(cropton) %>% 
+
+      cropton_suit_maxent <- maxent_result_plots %>%
+            crop(cropton) %>%
             mask(cropton)
-      
+
       new_forest_maxent <- ggplot() +
             geom_spatraster(data = new_forest_suit_maxent) +
             geom_spatvector(data = new_forest, fill = "transparent", col = "red") +
             theme_minimal() +
             ggtitle("New forest") +
             scale_fill_viridis(na.value = "transparent", name = "Suitability")
-      
+
       cropton_maxent <- ggplot() +
             geom_spatraster(data = cropton_suit_maxent) +
             geom_spatvector(data = cropton, fill = "transparent", col = "red") +
             theme_minimal() +
             ggtitle("Cropton") +
             scale_fill_viridis(na.value = "transparent", name = "Suitability")
-      
+
       ennerdale_maxent <- ggplot() +
             geom_spatraster(data = ennerdale_suit_maxent) +
             geom_spatvector(data = ennerdale, fill = "transparent", col = "red") +
             theme_minimal() +
             ggtitle("Ennerdale") +
             scale_fill_viridis(na.value = "transparent", name = "Suitability")
-      
-      combined_maxent <- ggpubr::ggarrange(new_forest_maxent, cropton_maxent, ennerdale_maxent, 
+
+      combined_maxent <- ggpubr::ggarrange(new_forest_maxent, cropton_maxent, ennerdale_maxent,
                                          common.legend = T, ncol = 3, nrow = 1, legend = "bottom")
       combined_maxent
-      
-      ggsave(plot = combined_maxent, 
+
+      ggsave(plot = combined_maxent,
              filename = paste0("figures/", gsub(" ", "_", species_choice),"/", gsub(" ", "_", species_choice), "_maxent_examples.png"),
-             width = 7.15, height = 3, units = "in")
+             width = 10, height = 3.5, units = "in", dpi = 300)
 }
 
 

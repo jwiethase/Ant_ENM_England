@@ -80,35 +80,33 @@ distance_ancient_30m <- ancient_30m %>%
 ## Create a mask layer of forest patches. Buffer to include ants at the edges
 forest_mask <- cover_VOM_30m
 values(forest_mask) <- ifelse(values(forest_mask) < 0.3, NA, 1)
-forest_mask_buff <- buffer(forest_mask, width = 0.15, background = 0)
+
+## Create a distance to forest patch layer
+distance_forest <- forest_mask %>% 
+      terra::distance(target = 1, unit = "m") 
+
+## How far away were most ant records found?
+sporadic <- vect('species_data/processed_shp/sporadic_combined.shp')
+vals <- terra::extract(distance_forest, sporadic, ID = F)
+distance_upper <- quantile(vals$cover_VOM, probs = 0.95)
+
+## 95% of nests are within 67.1 meters of the forest edge. Round up and use as buffer
+forest_mask_buff <- buffer(forest_mask, width = 0.07, background = 0)
 values(forest_mask_buff) <- ifelse(values(forest_mask_buff) == TRUE, 1, 0)
+forest_mask_buff <- mask(forest_mask_buff, ROI)
 
-# Check if this captures most ant presence records
-sporadic <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
-      filter(source != "dallimore", source != "nym", source != "gaitbarrows", source != "hardcastle") %>% 
-      dplyr::select(x, y, species)
-exhaustive <- read.csv('species_data/processed_csv/exhaustive_combined.csv') %>% 
-      dplyr::select(x, y, species)
-all_spatial <- vect(rbind(exhaustive, sporadic), crs = crs(km_proj), geom=c("x", "y"))
-
-all_spatial$val <- terra::extract(forest_mask_buff, all_spatial)[, 2]
-table(all_spatial$val) # Most ants are within the forest mask
-
-sporadic$val <- terra::extract(forest_mask_buff, sporadic %>% 
-                                     vect(crs = crs(km_proj), geom=c("x", "y")))[, 2]
-table(sporadic$val) 
+# How many nests are outside this buffer?
+nests_captured <- terra::extract(forest_mask_buff, sporadic, ID = F)
+table(nests_captured) # 23 fall outside the buffered zone, 525 are inside
 
 ## Final forest stack ----------------------------------------------------
 forest_stack_30m <- c(distance_ancient_30m, 
-                      cover_VOM_30m, perc09_height_VOM_30m, sd_height_VOM_30m, mean_height_VOM_30m,
-                      forest_mask_buff)
+                      cover_VOM_30m, perc09_height_VOM_30m, sd_height_VOM_30m, mean_height_VOM_30m)
 names(forest_stack_30m) <- c('distance_ancient', 
-                           'cover_VOM', 'perc09_height_VOM', 'sd_height_VOM', 'mean_height_VOM',
-                           'forest_mask_buff')
+                           'cover_VOM', 'perc09_height_VOM', 'sd_height_VOM', 'mean_height_VOM')
 
 # Make coarser stack for local testing
 forest_stack_300m <- forest_stack_30m %>% terra::aggregate(fact = 10, fun = 'median', threads = T)
-forest_stack_300m$forest_mask_buff <- subst(forest_stack_300m$forest_mask_buff, 0.5, 1) # Aggregation introduced 0.5, convert
 
 # Topography ----------------------------------------------------
 # Derived from NASA DEM layer
@@ -158,6 +156,8 @@ writeRaster(topo_stack_300m, "covariates/processed/topo_stack_300m.tif", overwri
 
 writeRaster(forest_stack_30m, "covariates/processed/forest_stack_30m.tif", overwrite=TRUE)
 writeRaster(forest_stack_300m, "covariates/processed/forest_stack_300m.tif", overwrite=TRUE)
+
+writeRaster(forest_mask_buff, "covariates/processed/forest_mask_buff_30m.tif", overwrite=TRUE)
 
 writeRaster(effort_rast_lgcp_10km, "covariates/processed/effort_rast_lgcp_10km.tif", overwrite=TRUE)
 writeRaster(effort_rast_integrated_10km, "covariates/processed/effort_rast_integrated_10km.tif", overwrite=TRUE)

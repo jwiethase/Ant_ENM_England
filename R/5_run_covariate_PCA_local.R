@@ -9,9 +9,11 @@ source('source/misc_functions.R')
 
 # Load data ----------------------------------------------------
 climate_stack_1km <- rast("covariates/processed/climate_stack_1km.tif")
-forest_stack <- rast("covariates/processed/forest_stack_300m.tif") %>% 
-      tidyterra::select(-mean_height_VOM)
+forest_stack <- rast("covariates/processed/forest_stack_30m.tif") 
 topo_stack <- rast("covariates/processed/topo_stack_300m.tif")
+
+forest_mask <- ifel(forest_stack$cover_VOM < 0.3, NA, 1)
+names(forest_mask) <- "forest_mask"
 
 eigen_threshold <- 0.85
 
@@ -20,7 +22,6 @@ climate_stack_1km$median_total_rain_coldest_log <- log(climate_stack_1km$median_
 climate_stack_1km$median_total_rain_hottest_log <- log(climate_stack_1km$median_total_rain_hottest)
 
 # VOM layers are heavily skewed; run transformation
-forest_stack$cover_VOM_sqrt <- sqrt(forest_stack$cover_VOM)
 forest_stack$perc09_height_VOM_sqrt <- sqrt(forest_stack$perc09_height_VOM)
 forest_stack$sd_height_VOM_sqrt <- sqrt(forest_stack$sd_height_VOM)
 
@@ -35,7 +36,7 @@ dev.off()
 
 pdf("PCA_output/figures/forest_densities.pdf", width = 12, height = 7)
 par(mfrow = c(3, 3))
-lapply(names(forest_stack), function(x){hist(values(forest_stack[[x]] , na.rm = T), main = x)})
+lapply(names(forest_stack), function(x){hist(values(forest_stack[[x]], na.rm = T), main = x)})
 dev.off()
 
 pdf("PCA_output/figures/topo_densities.pdf", width = 12, height = 7)
@@ -101,8 +102,8 @@ names(clim_topo_PC_stack) <- c(paste0("clim_topo_PC", 1:nclim_topo_included), "l
 ## Run the PCA only on non-zero values (there are many of those). These will be mostly be ignored
 ## later anyways due to the forest/non-forest dummy layers
 forest_stack_PCA <- forest_stack %>%
-      tidyterra::select(cover_VOM_sqrt, perc09_height_VOM_sqrt, sd_height_VOM_sqrt, distance_ancient) %>% 
-      mask(subst(forest_stack$forest_mask_buff, 0, NA)) 
+      tidyterra::select(cover_VOM, perc09_height_VOM, sd_height_VOM) %>% 
+      mask(forest_mask)
 
 rpc_forest <- terra::prcomp(forest_stack_PCA, center = T, scale. = T)
 summary(rpc_forest)
@@ -121,15 +122,18 @@ forest_cumulative_df <- data.frame(cumsum(forest_cumulative)) %>%
              prop_var = forest_cumulative) %>% 
       rename(cum_var = cumsum.forest_cumulative.)
 
-forest_scores_df <- data.frame(rpc_forest$x)
+forest_scores_df <- data.table(rpc_forest$x)
 
 forest_loadings_df <- data.frame(rpc_forest$rotation) %>% 
       mutate(PCA_comp = rownames(.)) %>% 
       dplyr::select(PCA_comp, everything())
 
-# PC1 is basically just forest/non-forest.
-forest_PC_stack <- predict(forest_stack, rpc_forest) %>% 
-      c(., forest_stack$forest_mask_buff)
+nforest_included <- sum(rpc_forest$sdev >= eigen_threshold)
+
+forest_PC_stack <- predict(forest_stack, rpc_forest) %>%
+      subset(1:nforest_included) %>% 
+      c(., forest_stack$forest_mask_buff, forest_mask)
+
 names(forest_PC_stack) <- gsub("PC", "forest_PC", names(forest_PC_stack))
 
 ## Export PCA loadings ----------------------------------------------------
@@ -137,10 +141,10 @@ write.csv(clim_topo_cumulative_df, "PCA_output/csv/clim_topo_cumulative_df.csv")
 fwrite(clim_topo_scores_df, "PCA_output/csv/clim_topo_scores_df.csv")
 write.csv(clim_topo_loadings_df, "PCA_output/csv/clim_topo_loadings_df.csv")
 
-write.csv(forest_cumulative_df, "PCA_output/csv/forest_cumulative_df.csv")
-fwrite(forest_scores_df, "PCA_output/csv/forest_scores_df.csv")
-write.csv(forest_loadings_df, "PCA_output/csv/forest_loadings_df.csv")
+write.csv(forest_cumulative_df, "PCA_output/csv/forest_cumulative_df_30m.csv")
+fwrite(forest_scores_df, "PCA_output/csv/forest_scores_df_30m.csv")
+write.csv(forest_loadings_df, "PCA_output/csv/forest_loadings_df_30m.csv")
 
 writeRaster(clim_topo_PC_stack, "covariates/processed/clim_topo_PC_stack.tif", overwrite=TRUE)
-writeRaster(forest_PC_stack, "covariates/processed/forest_PC_stack.tif", overwrite=TRUE)
+writeRaster(forest_PC_stack, "covariates/processed/forest_PC_stack_30m.tif", overwrite=TRUE)
 
