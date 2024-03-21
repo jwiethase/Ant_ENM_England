@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Runs a Point Process model using the 'inlabru' package   
+
 # LOAD PACKAGES -----------------------------------
 rm(list = ls())
 library(INLA) 
@@ -17,13 +25,13 @@ bru_options_set(control.compute = list(cpo = T))
 source('source/misc_functions.R')
 
 # SET PARAMETERS ---------------------------------------
-species_choice <- "Formica lugubris"
-predictions_resolution <- 3
+species_choice <- "Formica rufa"
+predictions_resolution <- 1
 predictions_resolution_fine <- 0.5
-max.edge = 11 # Not much higher than 30
+max.edge = 8 # Not much higher than 30
 
 # range_multiplier = 0.1
-prior_range = c(100, 0.1)
+prior_range = c(150, 0.1)
 prior_sigma = c(0.1, 0.5)
 
 smoother = 'tp'
@@ -38,16 +46,11 @@ clim_topo_covariates$lat_raster <- terra::scale(clim_topo_covariates$lat_raster)
 
 forest_covariates <- rast(paste0("covariates/processed/2forest_300m_", smoother, "_", n_knots, "k.tif")) 
 
-distance_ancient <- forest_stack %>% 
-      tidyterra::select(distance_ancient) %>% 
-      terra::scale()
+# distance_ancient <- forest_stack %>% 
+#       tidyterra::select(distance_ancient) %>% 
+#       terra::scale()
 
-forestdummy <- rast("covariates/processed/forest_mask_buff_30m.tif") %>% 
-      terra::aggregate(fact = 10, fun = 'sum')
-forestdummy <- ifel(forestdummy > 10, 1, 0) %>% 
-      terra::scale() %>% 
-      mask(ROI)
-names(forestdummy) <- "forest_mask_buff"
+forestdummy <- rast("covariates/processed/forest_mask_buff_300m.tif")
       
 effort_rast_10km <- rast('covariates/processed/effort_rast_lgcp_10km.tif')  %>% 
       terra::scale()
@@ -98,7 +101,6 @@ matern <- inla.spde2.pcmatern(
 # Make the forest dummy variable a factor, where non-forest is "1", and therefore the reference level
 base_terms <- c("coordinates ~ Intercept(1)",
                 "forestdummy(main = forestdummy$forest_mask_buff, model = 'linear')",
-                "distance_ancient(main = distance_ancient$distance_ancient, model = 'linear')",
                 "lat_raster(main = clim_topo_covariates$lat_raster, model = 'linear')",
                 "effort(main = effort_rast_10km$days_sampl, model = 'linear')",
                 "mySPDE(main = coordinates, model = matern)")

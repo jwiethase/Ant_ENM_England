@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Prepares spline base functions for the PCA covariates, to be included in the final SDMs  
+
 rm(list = ls())
 library(tidyverse)
 library(tidyterra)

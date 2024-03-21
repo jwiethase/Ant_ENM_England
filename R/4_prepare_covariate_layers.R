@@ -39,7 +39,7 @@ CEDA_clim_stack <- rast("covariates/raw/CEDA_clim_stack.tif") %>%
 ## Simple raster of latitude, helps with model fitting
 lat_raster <- rast(ext = ext(ROI), crs = crs(km_proj), res = 1)
 lat_raster[] <- rep(terra::yFromRow(lat_raster, 1:nrow(lat_raster)), each = ncol(lat_raster))
-writeRaster(lat_raster, 'test2.tif')
+
 lat_raster <- lat_raster %>% 
       mask(ROI) %>% 
       terra::resample(CEDA_clim_stack)
@@ -105,8 +105,15 @@ forest_stack_30m <- c(distance_ancient_30m,
 names(forest_stack_30m) <- c('distance_ancient', 
                            'cover_VOM', 'perc09_height_VOM', 'sd_height_VOM', 'mean_height_VOM')
 
-# Make coarser stack for local testing
+# Make coarser stacks for local testing
 forest_stack_300m <- forest_stack_30m %>% terra::aggregate(fact = 10, fun = 'median', threads = T)
+
+forest_mask_300m <- ifel(forest_stack_300m$cover_VOM > 0.3, 1, NA)
+forest_mask_buff_300m <- buffer(forest_mask_300m, width = 0.4, background = 0)
+values(forest_mask_buff_300m) <- ifelse(values(forest_mask_buff_300m) == TRUE, 1, 0)
+names(forest_mask_buff_300m) <- "forest_mask_buff"
+nests_captured_300m <- terra::extract(forest_mask_buff_300m, sporadic, ID = F)
+table(nests_captured_300m) # 22 fall outside buffer
 
 # Topography ----------------------------------------------------
 # Derived from NASA DEM layer
@@ -158,6 +165,7 @@ writeRaster(forest_stack_30m, "covariates/processed/forest_stack_30m.tif", overw
 writeRaster(forest_stack_300m, "covariates/processed/forest_stack_300m.tif", overwrite=TRUE)
 
 writeRaster(forest_mask_buff, "covariates/processed/forest_mask_buff_30m.tif", overwrite=TRUE)
+writeRaster(forest_mask_buff_300m, "covariates/processed/forest_mask_buff_300m.tif", overwrite=TRUE)
 
 writeRaster(effort_rast_lgcp_10km, "covariates/processed/effort_rast_lgcp_10km.tif", overwrite=TRUE)
 writeRaster(effort_rast_integrated_10km, "covariates/processed/effort_rast_integrated_10km.tif", overwrite=TRUE)

@@ -1,3 +1,13 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Identifies forest patches that are likely occupied now, likely not occupied but potentially naturally 
+# colonised, and likely not occupied and not naturally colonised. Based on processed suitability model
+# outputs.
+
 # Identify Forestry England-managed patches that might be colonised in the future 
 rm(list = ls())
 library(landscapemetrics)

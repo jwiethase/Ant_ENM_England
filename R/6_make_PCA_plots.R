@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Takes the outputs of the PCA analysis and visualizes them
+
 rm(list = ls())
 library(tidyverse)
 library(viridis)

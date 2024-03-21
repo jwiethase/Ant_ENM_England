@@ -1,3 +1,11 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Runs a Maxent suitability model using the 'dismo' package   
+
 rm(list = ls())
 library(dismo)
 library(terra)
@@ -20,7 +28,6 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
                       "distance_ancient")
 
-
 # DATA FILES ------------------------------------------
 ## Covariates ------------------------------------------
 ROI <- vect('spatial_other/ROI_kmproj.shp')
@@ -29,8 +36,8 @@ forest_stack <- rast("covariates/processed/forest_stack_300m.tif")
 forest_covariates <- rast(paste0("covariates/processed/2forest_300m_", smoother, "_", n_knots, "k.tif"))
 
 forest_mask_buff <- rast("covariates/processed/forest_mask_buff_30m.tif") %>%
-      terra::resample(forest_covariates, method = "max") %>% 
-      subst(0, NA)
+      terra::resample(forest_covariates, method = "sum") 
+forest_mask_buff <- ifel(forest_mask_buff > 10, 1, 0)
 
 clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif")) %>%
       resample(forest_covariates)
@@ -46,7 +53,6 @@ covariates_stack <- c(forest_covariates, clim_topo_covariates, distance_ancient)
 predictors <- raster::subset(stack(covariates_stack), subset = covars_selection)  
 
 for(i in c("Formica rufa", "Formica lugubris")){
-      i = "Formica rufa"
       species_choice = i
 
       ## Observations ------------------------------------------
@@ -91,19 +97,20 @@ for(i in c("Formica rufa", "Formica lugubris")){
       me <- maxent(x = predictors, p = thinned_presences, 
                    a = bg_bias)
       
-      suitability_raster <- predict(me, predictors, progress = 'text') %>% 
-            rast()
+      suitability_preds <- predict(me, predictors, progress = 'text')
+      
+      suitability_raster <- rast(suitability_preds) 
       
       writeRaster(suitability_raster, 
                   filename = paste0("model_out/", gsub(" ", "_", species_choice), "/maxent/sporadic_", 
                                     gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all300m_thin", thin_dist, "m.tif"), overwrite = T)
       
-      # pdf(paste0("figures/", gsub(" ", "_", species_choice), "/maxent/sporadic_", 
-      #            gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all300m_thin", thin_dist, "m.pdf"), width = 14, height = 9)
+      pdf(paste0("figures/", gsub(" ", "_", species_choice), "/maxent/sporadic_",
+                 gsub(" ", "_", species_choice), "_", n_knots, "k_", smoother, "_all300m_thin", thin_dist, "m.pdf"), width = 14, height = 9)
       par(mfrow=c(1, 2))
       plot(me)
       plot(suitability_raster, main = paste0("Maxent suitability: ", species_choice))
-      # dev.off()
+      dev.off()
       par(mfrow=c(1, 1))
       
       # TESTING ------------------------------------------

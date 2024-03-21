@@ -1,3 +1,13 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Takes the Maxent and Point Process model outputs and processes them, then export and visualise.
+# In the case of Point Process model outputs, these are adjusted to a more meaningful scale
+# using actual nest location records
+
 # LOAD PACKAGES -----------------------------------
 rm(list = ls())
 library(terra)

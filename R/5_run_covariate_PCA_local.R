@@ -1,3 +1,12 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Reduces groups of potentially correlated covariates to PCA axes,
+# and exports the results as rasters 
+
 rm(list = ls())
 library(tidyverse)
 library(tidyterra)

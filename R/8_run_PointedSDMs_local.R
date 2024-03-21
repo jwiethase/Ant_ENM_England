@@ -1,3 +1,14 @@
+# HEADER --------------------------------------------
+#
+# Author: Joris Wiethase
+# Email: j.wiethase@gmail.com
+# 
+# Script Description:  
+# Runs a integrated INLA model using the 'PoinedSDMs' package
+# 
+# NOTE: Not currently working, as the sampling effort is not successfully integrated in the model,
+# potentially due to internal numerical issues stemming from the presence-only data   
+
 rm(list = ls())
 library(sf)
 library(terra)
