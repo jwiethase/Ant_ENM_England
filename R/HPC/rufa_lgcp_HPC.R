@@ -56,10 +56,6 @@ clim_topo_covariates$lat_raster <- terra::scale(clim_topo_covariates$lat_raster)
 
 forest_covariates <- rast(paste0("data/2forest_30m_cr_3k.tif")) 
 
-distance_ancient <- forest_stack %>% 
-      tidyterra::select(distance_ancient) %>% 
-      terra::scale()
-
 forestdummy <- rast("data/forest_mask_buff_30m.tif") %>% 
       terra::scale() %>% 
       mask(ROI)
@@ -99,7 +95,6 @@ matern <- inla.spde2.pcmatern(
 # Construct model formula
 base_terms <- c("coordinates ~ Intercept(1)",
                 "forestdummy(main = forestdummy$forest_mask_buff, model = 'linear')",
-                "distance_ancient(main = distance_ancient$distance_ancient, model = 'linear')",
                 "lat_raster(main = clim_topo_covariates$lat_raster, model = 'linear')",
                 "effort(main = effort_rast_10km$days_sampl, model = 'linear')",
                 "mySPDE(main = coordinates, model = matern)")

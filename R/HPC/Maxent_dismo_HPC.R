@@ -1,4 +1,6 @@
 rm(list = ls())
+options(java.parameters = "-Xmx250g") 
+library(rJava)
 library(dismo)
 library(terra)
 library(tidyterra)
@@ -34,8 +36,7 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "clim_topo_PC5_spline1", "clim_topo_PC5_spline2",
                       "clim_topo_PC6_spline1", "clim_topo_PC6_spline2",
                       "forest_PC1_spline1", "forest_PC1_spline2",
-                      "forest_PC2_spline1", "forest_PC2_spline2",
-                      "distance_ancient")
+                      "forest_PC2_spline1", "forest_PC2_spline2")
 
 dir.create(paste0("model_out/", gsub(" ", "_", species_choice)), showWarnings = F)
 dir.create(paste0("model_out/", gsub(" ", "_", species_choice), "/maxent"), showWarnings = F)
@@ -58,16 +59,16 @@ clim_topo_covariates <- rast(paste0("data/6clim_topo_", smoother, "_", n_knots, 
 
 print("clim_topo_covariates done")
 
-distance_ancient <- forest_stack %>% 
-      tidyterra::select(distance_ancient) %>% 
-      terra::resample(forest_covariates) 
+# distance_ancient <- forest_stack %>% 
+#       tidyterra::select(distance_ancient) %>% 
+#       terra::resample(forest_covariates) 
+# 
+# distance_ancient <- distance_ancient %>% 
+#       terra::scale()
 
-distance_ancient <- distance_ancient %>% 
-      terra::scale()
+# print("distance_ancient done")
 
-print("distance_ancient done")
-
-covariates_stack <- c(forest_covariates, clim_topo_covariates, distance_ancient) %>% 
+covariates_stack <- c(forest_covariates, clim_topo_covariates) %>% 
       terra::mask(forest_mask_buff)
 
 predictors <- raster::subset(stack(covariates_stack), subset = covars_selection)     
@@ -83,6 +84,8 @@ thinned_presences <- sporadic %>%
       thin_spatial(., dist_meters = thin_dist, seed = 42) %>% 
       as.data.frame(geom = "XY")
 
+gc()
+
 # PARTITION ------------------------------------------
 fold <- kfold(thinned_presences, k = 5)
 occtest <- thinned_presences[fold == 1, ]
@@ -96,8 +99,11 @@ me <- maxent(x = predictors, p = thinned_presences,
 
 print("Maxent done")
 
-suitability_raster <- predict(me, predictors, progress='text') %>% 
-      rast()
+gc()
+
+suitability_preds <- predict(me, predictors, progress = 'text')
+
+suitability_raster <- rast(suitability_preds) 
 
 writeRaster(suitability_raster, 
             filename = paste0("model_out/", gsub(" ", "_", species_choice), "/maxent/sporadic_", 

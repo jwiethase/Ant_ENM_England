@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH --job-name=jorisINLA         
+#SBATCH --time=00:50:00                    # Time limit hrs:min:sec
+#SBATCH --ntasks=1                         # How many tasks on each node
+#SBATCH --cpus-per-task=12                  # Size of node
+#SBATCH --mem=12gb                      
+#SBATCH --output=/users/jhw538/scratch/ant_modelling/logs/log_job_%A_%a.log
+#SBATCH --account=biol-antrec-2023
+#SBATCH --mail-type=END,FAIL               # Mail events (NONE, BEGIN, END, FAIL, ALL)
+#SBATCH --mail-user=jhw538@york.ac.uk      # Where to send mail
+#SBATCH --array=1-1280  #1280
+
+echo Job started on $(hostname) at $(date)
+
+module load R/4.3.2-gfbf-2023a
+module load GSL/2.7-GCC-12.3.0
+module load GDAL/3.7.1-foss-2023a
+module load UDUNITS/2.2.28-GCCcore-12.3.0
+
+Rscript /users/jhw538/scratch/ant_modelling/lgcp_HPC.R $SLURM_ARRAY_TASK_ID
+echo Job finished at $(date)
