@@ -23,7 +23,8 @@ point_buffer = 0.05                  # Buffer around nest records in meter, to a
 ON_threshold = 0.5
 SNO_threshold = 0.75       
 max_gap_dispersal = 0.1            # Distance in meters between likely occupied and suitable that is considered likely to be dispersed across naturally
-max_gap_translocation = 2      # Distance in meters beyond which we consider suitable patches very likely not occupied, and candidates for translocation
+max_gap_translocation = 2          # Distance in meters beyond which we consider suitable patches very likely not occupied, and candidates for translocation
+translocation_threshold = 0.1      # Within translocation patches, remove pixels below this suitability threshold
 
 dir.create(paste0('model_out/', gsub(' ', '_', species_choice),'/', model_choice, '/maxTransDist_', max_gap_translocation, 'km'), showWarnings = F)
 
@@ -35,7 +36,7 @@ forest_stack <- rast('covariates/processed/forest_stack_30m.tif') %>%
       terra::project(crs('epsg:27700'))
 
 if(model_choice == 'lgcp' & species_choice == 'Formica rufa'){
-      suitability_map <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_suitability_adj.tif')
+      suitability_map <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_suitability_adj_30m.tif.tif')
       crs(suitability_map) <- crs(km_proj)
 }
 
@@ -215,9 +216,9 @@ if(max_gap_translocation != 0){
 translocation_patches_mask <- ifel(is.na(translocation_patches), NA, 1)
 
 # Create graduated raster showing suitability scores in the translocation patches
-translocation_patches_gradient <- suitable_forest_forSNO %>% 
-      mask(translocation_patches_mask) %>% 
-      mask(FE_managed)
+translocation_patches_gradient <- suitability_map %>% 
+      clamp(lower = translocation_threshold, values = F) %>% 
+      mask(translocation_patches_mask)
 
 writeRaster(translocation_patches_mask, 
             paste0('model_out/', gsub(' ', '_', species_choice), '/', model_choice, '/maxTransDist_', max_gap_translocation, 'km/', gsub(' ', '_', species_choice), 
@@ -244,9 +245,9 @@ translocation_mask_FE <- translocation_patches_mask %>%
       crop(FE_managed) %>% 
       mask(FE_managed)
 
-translocation_gradient_FE <- suitable_forest_forSNO %>% 
-      resample(translocation_mask_FE) %>% 
-      mask(translocation_mask_FE)
+translocation_gradient_FE <- translocation_patches_gradient %>% 
+      crop(FE_managed) %>% 
+      mask(FE_managed)
 
 writeRaster(translocation_FE, 
             paste0('model_out/', gsub(' ', '_', species_choice), '/', model_choice, '/maxTransDist_', max_gap_translocation, 'km/', gsub(' ', '_', species_choice), 

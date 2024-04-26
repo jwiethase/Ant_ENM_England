@@ -17,11 +17,11 @@ source('source/misc_functions.R')
 
 # Load data ----------------------------------------------------
 clim_topo_PC_stack <- rast("covariates/processed/clim_topo_PC_stack.tif")
-forest_PC_stack <- rast("covariates/processed/forest_PC_stack_30m.tif")
-forest_mask_buff <- rast('covariates/processed/forest_mask_buff_30m.tif') %>% 
-      subst(0, NA)
-forest_PC_stack <- forest_PC_stack %>% 
-      mask(forest_mask_buff)
+forest_PC_stack <- rast("covariates/processed/forest_PC_stack_300m.tif")
+# forest_mask_buff <- rast('covariates/processed/forest_mask_buff_30m.tif') %>% 
+#       subst(0, NA)
+forest_PC_stack <- forest_PC_stack #%>% 
+      # mask(forest_mask_buff)
 
 smoother = 'tp'
 n_knots = 3

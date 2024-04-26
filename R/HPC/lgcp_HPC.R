@@ -59,9 +59,8 @@ clim_topo_covariates$lat_raster <- terra::scale(clim_topo_covariates$lat_raster)
 
 forest_covariates <- rast(paste0("data/2forest_300m_", smoother, "_", n_knots, "k.tif")) 
 
-distance_ancient <- rast("data/forest_stack_300m.tif") %>% 
-      tidyterra::select(distance_ancient) %>% 
-      terra::scale()
+forestdummy <- rast("data/forest_mask_buff_300m.tif") %>% 
+      mask(ROI)
 
 effort_rast_10km <- rast('data/effort_rast_lgcp_10km.tif') %>% 
       terra::scale()
@@ -73,7 +72,7 @@ sporadic_sf <- read.csv('data/sporadic_combined.csv') %>%
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
       thin_spatial(., dist_meters = thin_dist, seed = 42) %>% 
       st_as_sf() %>% 
-      cbind(terra::extract(forest_covariates$forest_mask_buff, ., ID = FALSE)) %>%
+      cbind(terra::extract(forestdummy, ., ID = FALSE)) %>%
       filter(forest_mask_buff == max(values(forest_covariates$forest_mask_buff, na.rm = T)))
 
 if(species_choice == "Formica lugubris"){
@@ -104,8 +103,7 @@ matern <- inla.spde2.pcmatern(
 
 # Construct model formula
 base_terms <- c("coordinates ~ Intercept(1)",
-                "forestdummy(main = forest_covariates$forest_mask_buff, model = 'linear')",
-                "distance_ancient(main = distance_ancient, model = 'linear')",
+                "forestdummy(main = forestdummy$forest_mask_buff, model = 'linear')",
                 "lat_raster(main = clim_topo_covariates$lat_raster, model = 'linear')",
                 "effort(main = effort_rast_10km$days_sampl, model = 'linear')",
                 "mySPDE(main = coordinates, model = matern)")

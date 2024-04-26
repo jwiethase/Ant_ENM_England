@@ -52,23 +52,21 @@ covars_selection <- c("clim_topo_PC1_spline1", "clim_topo_PC1_spline2",
                       "forest_PC1_spline1", "forest_PC1_spline2",
                       "forest_PC2_spline1", "forest_PC2_spline2",
                       "lat_raster",
-                      "distance_ancient",
                       "forest_mask_buff"
                       )
 
 # Data files ------------------------------------------
 ROI <- vect('spatial_other/ROI_kmproj.shp')
 
-clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif")) 
+forest_covariates <- rast(paste0("covariates/processed/2forest_300m_", smoother, "_", n_knots, "k.tif")) 
+
+clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif")) %>%
+      terra::resample(forest_covariates)
 clim_topo_covariates$lat_raster <- scale(clim_topo_covariates$lat_raster)
 
-forest_covariates <- rast(paste0("covariates/processed/2forest_300m_", smoother, "_", n_knots, "k.tif")) %>%
-      terra::resample(clim_topo_covariates)
-
-distance_ancient <- rast("covariates/processed/forest_stack_300m.tif") %>% 
-      tidyterra::select(distance_ancient) %>% 
-      terra::resample(clim_topo_covariates) %>% 
-      terra::scale()
+forestdummy <- rast("covariates/processed/forest_mask_buff_300m.tif") %>% 
+      mask(ROI) %>%
+      terra::resample(forest_covariates)
 
 sporadic_sf <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
       filter(species == species_choice,
@@ -76,7 +74,7 @@ sporadic_sf <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>%
       dplyr::select(x, y, days_sampled) %>% 
       mutate(days_sampled_log = log(days_sampled + 1)) %>% 
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
-      thin_spatial(., dist_meters = 100) %>% 
+      thin_spatial(., dist_meters = 50) %>% 
       st_as_sf() %>% 
       cbind(terra::extract(forest_covariates$forest_mask_buff, ., ID = FALSE)) %>%
       filter(forest_mask_buff == max(values(forest_covariates$forest_mask_buff, na.rm = T)))
@@ -92,12 +90,12 @@ exhaustive_sf <- read.csv('species_data/processed_csv/exhaustive_combined.csv') 
       filter(species == species_choice) %>% 
       vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
       # Some mild spatial thinning to help fitting the model
-      thin_spatial(., 50) %>%
+      thin_spatial(., 250) %>%
       st_as_sf() %>% 
       cbind(terra::extract(forest_covariates$forest_mask_buff, ., ID = FALSE)) %>%
       filter(forest_mask_buff == max(values(forest_covariates$forest_mask_buff, na.rm = T)))
 
-covariates <- c(forest_covariates, clim_topo_covariates, distance_ancient) %>% 
+covariates <- c(forest_covariates, clim_topo_covariates, forestdummy) %>% 
       tidyterra::select(all_of(covars_selection))
 
 # coords <- as.matrix(geom(exhaustive_vect))[, c("x", "y")]
@@ -150,7 +148,7 @@ model_setup$specifySpatial(Bias = 'exhaustive_sf',
 # model_setup$addSamplers(datasetName = 'exhaustive_sf', Samplers = small_regions)
 
 # Run model -----------------------------------
-model <- fitISDM(model_setup, options = list(control.inla = list(strategy = "laplace",
+model <- fitISDM(model_setup, options = list(control.inla = list(strategy = "eb",
                                                                  int.strategy = "auto")))  
 
 # if(model$summary.hyperpar[1, 2] > model$summary.hyperpar[1, 1] |

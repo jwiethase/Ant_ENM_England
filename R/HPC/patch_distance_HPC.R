@@ -14,11 +14,12 @@ job <- as.integer(args[1])
 
 # Parameters ----------------------------------------------------
 species_choices = c('Formica rufa', 'Formica lugubris')
-max_trans_distances <- c(0, 2, 5, 10, 25)
+model_choices <- c('maxent_V3', 'lgcp')
+max_trans_distances <- c(0, 2, 5, 25)
 ON_thresholds <- c(0.25, 0.5)
 SNO_thresholds <- c(0.5, 0.75)
 
-mult_combs <- crossing(species_choices, max_trans_distances, ON_thresholds, SNO_thresholds) # 40
+mult_combs <- crossing(species_choices, max_trans_distances, ON_thresholds, SNO_thresholds, model_choices) # 64
 comb_values <- mult_combs[job, ]
 print(comb_values)
 
@@ -28,24 +29,35 @@ ON_threshold = comb_values$ON_thresholds
 SNO_threshold = comb_values$SNO_thresholds
 print(paste('Starting', species_choice))
 
-model_choice = 'maxent'
+model_choice = comb_values$model_choices
 point_buffer = 0.05                  
-max_gap_dispersal = 0.1        
+max_gap_dispersal = 0.1    
+translocation_threshold = 0.1
 
 dir.create(paste0('model_out/', gsub(' ', '_', species_choice),'/', model_choice, '/maxTransDist_', max_gap_translocation, 'km'), showWarnings = F)
 
 # Load and prepare data ----------------------------------------------------
+ROI <- vect('data/ROI_outline_27700.shp') %>% 
+      terra::project(crs(km_proj))
 FE_managed <- vect('data/Forestry_England_managed_forest.shp') %>% 
       project(crs(km_proj))
 forest_stack <- rast('data/forest_stack_30m.tif') %>%
       terra::project(crs('epsg:27700'))
 
-if(model_choice == 'maxent' & species_choice == 'Formica rufa'){
-      suitability_map <- rast('model_out/Formica_rufa/maxent/sporadic_Formica_rufa_3k_tp_all30m_thin250m.tif') 
+if(model_choice == 'maxent_V3' & species_choice == 'Formica rufa'){
+      suitability_map <- rast('model_out/Formica_rufa/maxent_V3/V3_sporadic_Formica_rufa_all30m_thin0m.tif') 
 }
 
-if(model_choice == 'maxent' & species_choice == 'Formica lugubris'){
-      suitability_map <- rast('model_out/Formica_lugubris/maxent/sporadic_Formica_lugubris_3k_tp_all30m_thin100m.tif')
+if(model_choice == 'maxent_V3' & species_choice == 'Formica lugubris'){
+      suitability_map <- rast('model_out/Formica_lugubris/maxent_V3/V3_sporadic_Formica_lugubris_all30m_thin250m.tif')
+}
+
+if(model_choice == 'lgcp' & species_choice == 'Formica rufa'){
+      suitability_map <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_lgcp_all30m_mosaic.tif') 
+}
+
+if(model_choice == 'lgcp' & species_choice == 'Formica lugubris'){
+      suitability_map <- rast('model_out/Formica_lugubris/lgcp/Formica_lugubris_lgcp_all30m_mosaic.tif') 
 }
 
 if(model_choice == 'lgcp'){
@@ -69,8 +81,15 @@ combined_presences <- rbind(sporadic, exhaustive) %>%
 
 ant_vect <- combined_presences %>% 
       filter(species == species_choice)
-
 ant_vect_buff <- terra::buffer(ant_vect, width = point_buffer)
+
+if(model_choice == 'lgcp'){
+      suitability_map <- suitability_map %>% 
+            normalise_raster() %>% 
+            mask(ROI) %>% 
+            tidyterra::select(q0.5) 
+}
+
 
 # 1. Identify areas likely now occupied (ON) ----------------------------------------------------
 suitable_forest_forON <- suitability_map %>% 
@@ -213,7 +232,8 @@ if(max_gap_translocation != 0){
 
 translocation_patches_mask <- ifel(is.na(translocation_patches), NA, 1)
 
-translocation_patches_gradient <- suitable_forest_forSNO %>% 
+translocation_patches_gradient <- suitability_map %>% 
+      clamp(lower = translocation_threshold, values = F) %>% 
       mask(translocation_patches_mask)
 
 writeRaster(translocation_patches_mask, 
@@ -243,9 +263,9 @@ translocation_mask_FE <- translocation_patches_mask %>%
       crop(FE_managed) %>% 
       mask(FE_managed)
 
-translocation_gradient_FE <- suitable_forest_forSNO %>% 
-      resample(translocation_mask_FE) %>% 
-      mask(translocation_mask_FE)
+translocation_gradient_FE <- translocation_patches_gradient %>% 
+      crop(FE_managed) %>% 
+      mask(FE_managed)
 
 writeRaster(translocation_FE, 
             paste0('model_out/', gsub(' ', '_', species_choice), '/', model_choice, '/maxTransDist_', max_gap_translocation, 'km/', gsub(' ', '_', species_choice), 

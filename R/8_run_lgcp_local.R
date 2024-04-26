@@ -26,8 +26,8 @@ source('source/misc_functions.R')
 
 # SET PARAMETERS ---------------------------------------
 species_choice <- "Formica rufa"
-predictions_resolution <- 1
-predictions_resolution_fine <- 0.5
+predictions_resolution <- 2
+predictions_resolution_fine <- 0.3
 max.edge = 8 # Not much higher than 30
 
 # range_multiplier = 0.1
@@ -39,6 +39,8 @@ n_knots = 3
 
 # DATA FILES ------------------------------------------
 ROI <- vect('spatial_other/ROI_kmproj.shp')
+FE_managed <- vect('spatial_other/Forestry_England_managed_forest.shp') %>% 
+      terra::project(crs(km_proj))
 forest_stack <- rast("covariates/processed/forest_stack_300m.tif")
 
 clim_topo_covariates <- rast(paste0("covariates/processed/6clim_topo_300m_", smoother, "_", n_knots, "k.tif"))
@@ -46,24 +48,25 @@ clim_topo_covariates$lat_raster <- terra::scale(clim_topo_covariates$lat_raster)
 
 forest_covariates <- rast(paste0("covariates/processed/2forest_300m_", smoother, "_", n_knots, "k.tif")) 
 
-# distance_ancient <- forest_stack %>% 
-#       tidyterra::select(distance_ancient) %>% 
-#       terra::scale()
+distance_forest <- rast("covariates/processed/distance_forest_30m.tif") %>%
+      terra::resample(forest_covariates) %>% 
+      scale()
+names(distance_forest) <- "distance_forest"
 
-forestdummy <- rast("covariates/processed/forest_mask_buff_300m.tif")
+# forestdummy <- rast("covariates/processed/forest_mask_buff_300m.tif") %>% 
+#       mask(ROI)
       
 effort_rast_10km <- rast('covariates/processed/effort_rast_lgcp_10km.tif')  %>% 
       terra::scale()
 
-sporadic_sf <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
+sporadic_vect <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
       filter(species == species_choice) %>% 
       dplyr::select(x, y, days_sampled) %>% 
-      vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) %>% 
-      thin_spatial(., dist_meters = 0, seed = 42) %>% 
-      st_as_sf() %>% 
-      cbind(terra::extract(forestdummy, ., ID = FALSE)) %>%
-      # Remove any stray records that weren't near forests
-      filter(forest_mask_buff == max(values(forestdummy, na.rm = T)))
+      vect(geom = c("x", "y"), crs = crs(km_proj), keepgeom = TRUE) 
+
+sporadic_sf <- sporadic_vect %>% 
+      thin_spatial(., dist_meters = 0, seed = 123) %>% 
+      st_as_sf()
 
 # test <- terra::extract(effort_rast_10km, sporadic_sf)
 # hist(test$days_sampl, breaks = 20)
@@ -100,7 +103,7 @@ matern <- inla.spde2.pcmatern(
 # Construct model formula
 # Make the forest dummy variable a factor, where non-forest is "1", and therefore the reference level
 base_terms <- c("coordinates ~ Intercept(1)",
-                "forestdummy(main = forestdummy$forest_mask_buff, model = 'linear')",
+                "distance_forest(main = distance_forest, model = 'linear')",
                 "lat_raster(main = clim_topo_covariates$lat_raster, model = 'linear')",
                 "effort(main = effort_rast_10km$days_sampl, model = 'linear')",
                 "mySPDE(main = coordinates, model = matern)")
@@ -252,6 +255,137 @@ diagnostic_plot
 # diagnostic_plot
 # dev.off()
 
+# Selected areas and model fit check
+new_forest <- FE_managed %>% 
+      filter(extent == "The Open Forest") %>% 
+      fillHoles
+
+cropton <- FE_managed %>% 
+      filter(extent == "Cropton") %>% 
+      fillHoles
+
+predictions_resolution_fine <- 0.1
+
+grid_points_new_forest <- rast(res = predictions_resolution_fine, ext = ext(new_forest), crs = crs(new_forest), vals = 1) %>% 
+      mask(new_forest) %>% 
+      as.data.table(xy = T) %>% 
+      SpatialPoints(proj4string = CRS(km_proj))
+
+grid_points_cropton <- rast(res = predictions_resolution_fine, ext = ext(cropton), crs = crs(cropton), vals = 1) %>% 
+      mask(cropton) %>% 
+      as.data.table(xy = T) %>% 
+      SpatialPoints(proj4string = CRS(km_proj))
+
+suitability_new_forest <- predict(object = model, 
+                                  newdata = grid_points_new_forest,
+                                  formula = as.formula(paste0("~ mySPDE + ", fixed_effects_effort)),
+                                  n.samples = 100)
+suitability_cropton <- predict(object = model, 
+                               newdata = grid_points_cropton,
+                               formula = as.formula(paste0("~ mySPDE + ", fixed_effects_effort)),
+                               n.samples = 100)
+
+suitability_raster_new_forest <- as.data.frame(suitability_new_forest) %>% 
+      dplyr::select(x, y, q0.025, q0.5, q0.975, sd) %>% 
+      rast(type = "xyz") 
+
+suitability_raster_cropton <- as.data.frame(suitability_cropton) %>% 
+      dplyr::select(x, y, q0.025, q0.5, q0.975, sd) %>% 
+      rast(type = "xyz") 
+
+suitability_plot_new_forest <- ggplot() +
+      geom_spatraster(data = (suitability_raster_new_forest$q0.5)) +
+      geom_spatvector(data = ROI, fill = NA, lwd = 1) +
+      theme_minimal() +
+      ggtitle("Suitability", subtitle = "(Linear Scale)") +
+      scale_fill_viridis(na.value = "transparent", name = "Median")
+
+suitability_plot_cropton <- ggplot() +
+      geom_spatraster(data = (suitability_raster_cropton$q0.5)) +
+      geom_spatvector(data = ROI, fill = NA, lwd = 1) +
+      theme_minimal() +
+      ggtitle("Suitability", subtitle = "(Linear Scale)") +
+      scale_fill_viridis(na.value = "transparent", name = "Median")
+
+# Predict to presence locations
+sporadic <- read.csv('species_data/processed_csv/sporadic_combined.csv') %>% 
+      filter(species == species_choice,
+             source != "dallimore", source != "nym", source != "gaitbarrows", source != "hardcastle") %>% 
+      dplyr::select(x, y)
+exhaustive <- read.csv('species_data/processed_csv/exhaustive_combined.csv') %>% 
+      filter(species == species_choice) %>% 
+      dplyr::select(x, y)
+
+combined_presences <- rbind(sporadic, exhaustive) %>% 
+      vect(geom = c('x', 'y'), crs = crs(km_proj))
+
+combined_presences_df <- as.data.frame(combined_presences, geom='XY')
+
+preds_env_df <- combined_presences_df %>% 
+      cbind(terra::extract(clim_topo_covariates, combined_presences, ID = F)) %>% 
+      cbind(terra::extract(forest_covariates, combined_presences, ID = F)) %>% 
+      cbind(terra::extract(distance_forest, combined_presences, ID = F)) %>% 
+      cbind(terra::extract(effort_rast_10km, combined_presences, ID = F)) %>% 
+      drop_na() %>% 
+      SpatialPoints(proj4string = CRS(km_proj))
+
+suitable_present <- predict(object = model, 
+                            newdata = preds_env_df,
+                            formula = as.formula(paste0("~ + ", fixed_effects_effort)),
+                            n.samples = 100) %>% 
+      as.data.frame()
+
+extracted_hist <- ggplot() +
+      geom_rect(aes(xmin = min(values(suitability_raster$q0.5), na.rm = T),
+                    xmax = max(values(suitability_raster$q0.5), na.rm = T),
+                    ymin = -Inf, 
+                    ymax = Inf), fill = "blue", alpha = 0.25) +
+      geom_histogram(data = suitable_present, aes(q0.5)) +
+      theme_bw() +
+      xlim(range(values(suitability_raster$q0.5), na.rm = T))
+
+extracted_box <- ggplot() +
+      geom_rect(aes(ymin = min(values(suitability_raster$q0.5), na.rm = T),
+                    ymax = max(values(suitability_raster$q0.5), na.rm = T),
+                    xmin = -Inf, 
+                    xmax = Inf), fill = "blue", alpha = 0.25) +
+      geom_boxplot(data = suitable_present, aes(y = q0.5)) +
+      ggtitle(paste0("Raw predicted median: ", round(median(suitable_present$q0.5, na.rm = T), digits = 2))) +
+      theme_bw() +
+      ylim(range(values(suitability_raster$q0.5), na.rm = T))
+
+boyce_test <- ecospat::ecospat.boyce(fit = suitability_raster$q0.5, obs = suitable_present$q0.5)
+
+par(mfrow=c(2, 3))
+suitability_plot_new_forest
+suitability_plot_cropton
+
+diagnostic_plot_2 <- (suitability_plot_new_forest | suitability_plot_cropton) / (extracted_hist | extracted_box)
+
+pdf(paste0("model_out/Formica_rufa/lgcp/diagnostic_", logCPO, "_all30m_", 
+           n_knots, "k_", smoother, "_", sub(" ", "_", species_choice), 
+           "_E", max.edge, "_thin", thin_dist,
+           "_r", prior_range[1], "_", prior_range[2], 
+           "_s", prior_sigma[1], "_", prior_sigma[2], ".pdf"),
+    width = 12, height = 9)
+diagnostic_plot_2
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Variable importance -----------------------------------------
 forest_buffer_mask <- ifel(forestdummy > 0, 1, NA)
 
@@ -374,4 +508,5 @@ print(paste("Climate and topography variable contribution: ", clim_topo_contribu
 #                       num.threads = 7,
 #                       seed = 42)
 # 
-# 
+
+

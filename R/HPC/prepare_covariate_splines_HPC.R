@@ -14,10 +14,11 @@ source('source/misc_functions.R')
 
 # Load data ----------------------------------------------------
 ROI <- vect('data/ROI_kmproj.shp')
-forest_mask_buff <- rast('data/forest_mask_buff_30m.tif') %>% 
-      subst(0, NA)
-forest_PC_stack <- rast("data/forest_PCA_30m.tif") %>% 
-      mask(forest_mask_buff)
+# forest_mask_buff <- rast('data/forest_mask_buff_30m.tif') %>% 
+#       subst(0, NA)
+forest_PC_stack <- rast("data/forest_PCA_30m.tif") 
+# %>% 
+#       mask(forest_mask_buff)
 # clim_topo_PC_stack <- rast("data/clim_topo_PCA_30m.tif")
 
 # smoother_list = c('tp')
@@ -52,8 +53,6 @@ summary(forest_df)
 forest_df_splines <- forest_df %>% 
       dplyr::select(-forest_mask) %>% 
       drop_na()
-
-summary(forest_df_splines)
 
 for(i in 1:2){
       forest_df_splines <- prepareMGCVsplines(forest_df_splines, paste0("forest_PC", i), n_knots = n_knots, smooth = smoother)

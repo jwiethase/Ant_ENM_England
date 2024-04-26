@@ -170,3 +170,5 @@ writeRaster(forest_mask_buff_300m, "covariates/processed/forest_mask_buff_300m.t
 writeRaster(effort_rast_lgcp_10km, "covariates/processed/effort_rast_lgcp_10km.tif", overwrite=TRUE)
 writeRaster(effort_rast_integrated_10km, "covariates/processed/effort_rast_integrated_10km.tif", overwrite=TRUE)
 
+writeRaster(distance_forest, "covariates/processed/distance_forest_30m.tif", overwrite=TRUE)
+
