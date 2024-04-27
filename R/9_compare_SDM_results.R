@@ -44,7 +44,7 @@ cropton <- FE_managed %>%
 # writeRaster(lgcp_rufa,
 #             filename = 'model_out/Formica_rufa/lgcp/sporadic_Formica_rufa_lgcp_all30m_merged.tif',
 #             overwrite=T)
-lgcp_rufa <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_lgcp_all30m_mosaic.tif')
+lgcp_rufa <- rast('model_out/Formica_rufa/lgcp/sporadic_Formica_rufa_lgcp_all30m_merged.tif')
 
 # lgcp_lugubris <- lapply(list.files(path = 'model_out/Formica_lugubris/lgcp/', pattern = 'slice', full.names = T), rast) %>%
 #       sprc() %>%
@@ -52,14 +52,13 @@ lgcp_rufa <- rast('model_out/Formica_rufa/lgcp/Formica_rufa_lgcp_all30m_mosaic.t
 # writeRaster(lgcp_lugubris,
 #             filename = 'model_out/Formica_lugubris/lgcp/sporadic_Formica_lugubris_lgcp_all30m_merged.tif',
 #             overwrite=T)
-lgcp_lugubris <- rast('model_out/Formica_lugubris/lgcp/Formica_lugubris_lgcp_all30m_mosaic.tif')
+lgcp_lugubris <- rast('model_out/Formica_lugubris/lgcp/sporadic_Formica_lugubris_lgcp_all30m_merged.tif')
 
 maxent_rufa <- rast('model_out/Formica_rufa/maxent/V3_sporadic_Formica_rufa_all30m_thin0m.tif')
-maxent_lugubris <- rast('model_out/Formica_lugubris/maxent/V3_sporadic_Formica_lugubris_all30m_thin250m.tif')
+maxent_lugubris <- rast('model_out/Formica_lugubris/maxent/V3_sporadic_Formica_lugubris_all30m_thin100m.tif')
 
 # PROCESS MODEL RESULTS ---------------------------------------
 for(i in c("Formica rufa", "Formica lugubris")){
-      i="Formica rufa"
       species_choice = i
       
       if(species_choice == "Formica rufa"){
@@ -93,16 +92,16 @@ for(i in c("Formica rufa", "Formica lugubris")){
       suitable_present <- terra::extract(lgcp_suit_result, combined_presences, ID = F)[, "q0.5"]
       # Get suitability threshold. Since some odd records might have been found in places that
       # are not actually suitable at all, we trim the bottom end to remove these outliers
-      suitability_threshold <- quantile(suitable_present, probs = c(0.05), na.rm = T)
+      suitability_threshold <- quantile(suitable_present, probs = c(0.01), na.rm = T)
       hist(suitable_present, main = species_choice)
       abline(v = suitability_threshold, col = "blue")
       
       # SUITABILITY MAP ---------------------------------------
       suit_lgcp_Eng <- lgcp_suit_result %>% 
             # Remove unsuitable areas
-            clamp(lower = suitability_threshold, 
-                  # upper = suitability_thresholds[2], 
-                  values = T) %>% 
+            # clamp(lower = suitability_threshold,
+            #       # upper = suitability_thresholds[2],
+            #       values = T) %>%
             normalise_raster() %>% 
             mask(ROI) %>% 
             tidyterra::select(q0.5) 
@@ -204,6 +203,10 @@ for(i in c("Formica rufa", "Formica lugubris")){
             ggtitle("Ennerdale") +
             scale_fill_viridis(na.value = "transparent", name = "Suitability")
       
+      ggsave(plot = ennerdale_maxent, 
+             filename = paste0("figures/", gsub(" ", "_", species_choice),"/", gsub(" ", "_", species_choice), "_maxent_ennerdale.png"),
+             width = 10, height = 7, units = "in", dpi = 300)
+      
       combined_maxent <- ggpubr::ggarrange(new_forest_maxent, cropton_maxent, ennerdale_maxent,
                                            common.legend = T, ncol = 3, nrow = 1, legend = "bottom")
       combined_maxent
@@ -215,7 +218,7 @@ for(i in c("Formica rufa", "Formica lugubris")){
       png(paste0("figures/", gsub(" ", "_", species_choice),"/", gsub(" ", "_", species_choice), "_suitability_lgcp_maxent.png"),
           width = 12, height = 7, units = "in", res = 300)
       par(mfrow=c(1, 2))
-      plot(suit_lgcp_Eng, main = paste0(species_choice, " - lgcp suitability"))
+      plot(suit_lgcp_Eng, main = paste0(species_choice, " - LGCP suitability"))
       plot(maxent_result, main = paste0(species_choice, " - Maxent suitability"))
       dev.off()
       par(mfrow=c(1, 1))

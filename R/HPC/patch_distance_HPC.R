@@ -49,7 +49,7 @@ if(model_choice == 'maxent_V3' & species_choice == 'Formica rufa'){
 }
 
 if(model_choice == 'maxent_V3' & species_choice == 'Formica lugubris'){
-      suitability_map <- rast('model_out/Formica_lugubris/maxent_V3/V3_sporadic_Formica_lugubris_all30m_thin250m.tif')
+      suitability_map <- rast('model_out/Formica_lugubris/maxent_V3/V3_sporadic_Formica_lugubris_all30m_thin100m.tif')
 }
 
 if(model_choice == 'lgcp' & species_choice == 'Formica rufa'){
